@@ -22,13 +22,112 @@
         "vendor": [],
         "build_metadata": []
       },
-      "capabilities": {},
-      "capability_status": {},
+      "capabilities": {
+        "configure": [
+          "configure"
+        ],
+        "build": [
+          "build"
+        ]
+      },
+      "capability_status": {
+        "configure": {
+          "status": "available",
+          "reason": "qmake (Qt 6.2.4) 在 build/ shadow 生成 Makefile；2026-09-04 实测通过"
+        },
+        "build": {
+          "status": "available",
+          "reason": "make -j2 链接 Qt6 Widgets 应用并 offscreen 冒烟通过；2026-09-04 实测"
+        },
+        "test": {
+          "status": "needs-approval",
+          "reason": "尚无测试 target；待添加 QtTest 工程后定义 test 命令"
+        },
+        "target-run": {
+          "status": "needs-approval",
+          "reason": "GUI 需人工目检；QT_QPA_PLATFORM=offscreen 冒烟可作候选"
+        }
+      },
       "build_targets": [],
       "build_graph_entries": [],
       "distribution_surfaces": []
     }
   ],
-  "commands": [],
-  "toolchain_identity": []
+  "commands": [
+    {
+      "id": "configure",
+      "module_ids": [
+        "qmake-1"
+      ],
+      "capability": "configure",
+      "argv": [
+        "qmake",
+        "../charging-pile.pro"
+      ],
+      "cwd": "build",
+      "timeout_seconds": 120,
+      "inherit_env": [
+        "PATH",
+        "HOME"
+      ],
+      "output_roles": [],
+      "side_effects": [],
+      "required_tools": [
+        "qmake"
+      ]
+    },
+    {
+      "id": "build",
+      "module_ids": [
+        "qmake-1"
+      ],
+      "capability": "build",
+      "argv": [
+        "make",
+        "-j2"
+      ],
+      "cwd": "build",
+      "timeout_seconds": 300,
+      "inherit_env": [
+        "PATH",
+        "HOME"
+      ],
+      "output_roles": [],
+      "side_effects": [],
+      "required_tools": [
+        "make"
+      ]
+    },
+    {
+      "id": "gxx-id",
+      "module_ids": [
+        "qmake-1"
+      ],
+      "capability": "static-analysis",
+      "argv": [
+        "g++",
+        "--version"
+      ],
+      "cwd": ".",
+      "timeout_seconds": 30,
+      "inherit_env": [
+        "PATH",
+        "HOME"
+      ],
+      "output_roles": [],
+      "side_effects": [],
+      "required_tools": [
+        "g++"
+      ]
+    }
+  ],
+  "toolchain_identity": [
+    {
+      "id": "gcc-11-qmake",
+      "module_ids": [
+        "qmake-1"
+      ],
+      "command_id": "gxx-id"
+    }
+  ]
 }
