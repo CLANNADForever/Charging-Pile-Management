@@ -2,6 +2,7 @@
 #ifndef NCS_COMMON_ENTITIES_H
 #define NCS_COMMON_ENTITIES_H
 
+#include <QDateTime>
 #include <QString>
 
 #include "money.h"
@@ -31,6 +32,37 @@ struct Device {
     DeviceState state = DeviceState::Idle;
     double powerKw = 0.0;
     double energyKwh = 0.0;
+};
+
+// 充电站(找桩/导航用字段起步；freePiles 需随预约/结束实时维护)
+struct Station {
+    int id = 0;
+    QString name;
+    QString address;
+    double latitude = 0.0;
+    double longitude = 0.0;
+    int totalPiles = 0;
+    int freePiles = 0;
+};
+
+// 充电订单状态
+enum class OrderStatus : int {
+    Charging = 0,   // 充电中(未结算)
+    Completed = 1,  // 已结算完成
+    Canceled = 2,   // 已取消
+};
+
+// 充电订单：金额一律 MoneyCents(分)；energyKwh 由设备计量累计
+struct Order {
+    int id = 0;
+    QString phone;         // 下单用户
+    int stationId = 0;
+    int deviceId = 0;
+    QDateTime startedAt;
+    QDateTime finishedAt;
+    double energyKwh = 0.0;
+    MoneyCents amountCents = 0;
+    OrderStatus status = OrderStatus::Charging;
 };
 
 }  // namespace ncs

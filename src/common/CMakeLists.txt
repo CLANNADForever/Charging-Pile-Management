@@ -1,6 +1,8 @@
 add_library(ncs_common STATIC
     money.h
     money.cpp
+    billing.h
+    billing.cpp
     entities.h
     entities.cpp
 )
