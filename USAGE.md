@@ -7,15 +7,17 @@
 三个角色 = 三个 Claude Code 会话（同一仓库 `/home/bit/workspace/charging-pile`，都从根目录开），
 **你当调度员**：角色之间不聊天，靠 `openspec/changes/<name>/` 下的文书和证据接力。
 
+**kebab 名字** = 全小写 + 连字符的短名，如 `add-qttest-target`。change 的名字都用这种格式。
+
 ---
 
 ## 0. 开跑前的环境
 
 ```bash
 cd /home/bit/workspace/charging-pile
-# 新开登录 shell 已自动有 node（~/.opt/node/bin 已加 PATH）。若没有：
+# 新开登录 shell 已自动有 node（~/opt/node/bin 已加 PATH）。若没有：
 export PATH="$HOME/opt/node/bin:$PATH"
-./scripts/change_status.sh        # 看现在有没有 active change
+./scripts/change_status.sh        # 查仪表盘：现在有没有 active change、到哪一步了
 ```
 
 ---
@@ -25,8 +27,8 @@ export PATH="$HOME/opt/node/bin:$PATH"
 ### 窗口 1 = Planner（规划者）
 
 ```bash
-./scripts/change_new.sh <kebab名字>     # 例：add-qttest-target；无 active 时自动激活
-./scripts/change_status.sh
+./scripts/change_new.sh <kebab名字>   # 建 change 空壳并激活(设为"正在做")；目录 openspec/changes/<名字>/
+./scripts/change_status.sh            # 查进度：active change + 当前阶段
 ```
 
 窗口 1 里粘：
@@ -43,16 +45,21 @@ Planner 会写好 `openspec/changes/<name>/`（proposal/specs/design/tasks）然
 **你的审核门槛**（必须读懂才放行）：
 ```bash
 ./scripts/openspec_cli.sh validate <name> --type change --strict --json --no-interactive
+#   ↑ 结构质检：Planner 写的文书是否符合 OpenSpec 严格格式？错则退回 Planner
 ./scripts/integration_surface_check.sh <name> --plan-check --json
-# 读：proposal.md(为什么) design.md(怎么设计) tasks.md(拆几步)
+#   ↑ 完整性质检：规划有没有漏(任务没拆/没说清要动哪些产品表面)？
+#   然后去读：proposal.md(为什么) design.md(怎么设计) tasks.md(拆几步)
 ```
 
-认可 → 冻结基线（两条命令，参数照抄）：
+认可 → 冻结基线（两条"上锁定格"，参数照抄）：
 ```bash
 ./scripts/snapshot_update.sh --freeze-planning-baseline --phase plan_ready \
   --current-step planning-approved --next-step freeze-implementation-base
+#   ↑ 冻结规划基线：给 proposal/specs/design/tasks 记指纹存档，
+#     之后谁偷改规划会被立刻查出
 ./scripts/snapshot_update.sh --freeze-implementation-base \
   --phase implementing --current-step implementation-base-frozen --next-step implement-first-task
+#   ↑ 冻结实现基线：把当前 git 提交记为实现起点(以后 diff 都拿它当"改动前")
 ```
 
 ### 窗口 2 = Generator（实现者，审核通过后开）
@@ -79,13 +86,15 @@ Generator 每个 task 会用 `./scripts/task_verify.sh` 记证据（RED 记"预�
 
 ```bash
 ./scripts/evaluator_check.sh --begin <name>
+#   ↑ 开一次独立验收：上锁，防止边验收边改
 ./scripts/evaluator_check.sh --run --kind build --surface <surface-id> --expect-exit 0 \
   --expected "<预期>" --observed "<实际观察>" --project-command build
-./scripts/evaluator_check.sh --finish <name>     # 不自动产生 verdict
+#   ↑ 记一条独立验收证据：真实跑 build，把"期望/实际"绑定到某个产品表面
+./scripts/evaluator_check.sh --finish <name>   # 结束验收：检查证据闭合并封存(不含判决)
 ```
 Pass → 归档（硬门禁，前面全绿才放行）：
 ```bash
-./scripts/change_archive.sh <name>
+./scripts/change_archive.sh <name>   # 归档：change 合入主 specs 历史、清空 active
 ```
 
 ---
@@ -120,19 +129,28 @@ Pass → 归档（硬门禁，前面全绿才放行）：
 - 布局、交互手感、窗口真的弹出来 → 你 X11 目检，把观察写进 Evaluator 的 `--observed`；
   缺真实条件就如实标 `Blocked`/`blocking_untested`，不要假装 Pass。
 
-## 6. 常用脚本速查
+## 6. 常用脚本速查（每条干什么）
 
-| 目的 | 命令 |
-|---|---|
-| 建/切/看 change | `change_new.sh <name>` / `change_select.sh <name>` / `change_status.sh [--json]` |
-| 冻结基线 | `snapshot_update.sh --freeze-planning-baseline` / `--freeze-implementation-base` |
-| 记 task 证据 | `task_verify.sh <task> --phase red\|green\|regression ... --project-command <id>` |
-| 完成 task | `task_verify.sh --complete <task>` |
-| surface report | `integration_surface_check.sh <name> --refresh\|--check` |
-| 验收 | `evaluator_check.sh --begin/\--run/\--finish/\--abort` |
-| 归档 | `change_archive.sh <name>`；部分失败 `archive_recover.sh --status/\--acknowledge` |
-| 断线续接 | `resume_from_snapshot.sh` |
-| 体检 | `harness_doctor.sh --strict` / `project_profile.sh --check` |
+| 目的 | 命令 | 这命令到底干嘛 |
+|---|---|---|
+| 建 change | `change_new.sh <name>` | 建空壳并激活（开始做它） |
+| 切换/清空 | `change_select.sh <name>` / `--clear` | 换 active 的 change / 清空 |
+| 看进度 | `change_status.sh [--json]` | 显示 active change、阶段、下一步 |
+| 校验文书 | `openspec_cli.sh validate <name> --type change --strict --json --no-interactive` | 结构质检 |
+| 完整性检查 | `integration_surface_check.sh <name> --plan-check` | 规划是否漏项 |
+| 冻结规划 | `snapshot_update.sh --freeze-planning-baseline` | 规划定稿上锁 |
+| 冻结实现 | `snapshot_update.sh --freeze-implementation-base` | 记 git 实现起点 |
+| 记 task 证据 | `task_verify.sh <task> --phase red\|green\|regression ... --project-command <id>` | 某 task 某阶段跑真命令留证 |
+| 完成 task | `task_verify.sh --complete <task>` | 标记该 task 完成 |
+| surface 报告 | `integration_surface_check.sh <name> --refresh\|--check` | 列出/校验本次改动动的产品表面 |
+| 开验收 | `evaluator_check.sh --begin <name>` | 开始独立验收（上锁） |
+| 验收证据 | `evaluator_check.sh --run ...` | 记一条真实命令验收证据 |
+| 收验收 | `evaluator_check.sh --finish <name>` | 结束验收并封存 |
+| 归档 | `change_archive.sh <name>` | 合入 specs 历史、清空 active |
+| 归档恢复 | `archive_recover.sh --status\|--acknowledge <name>` | 部分失败后人工确认解锁 |
+| 断线续接 | `resume_from_snapshot.sh` | 从快照找回上下文接着干 |
+| 体检 | `harness_doctor.sh --strict` | 环境+Profile+契约是否健康 |
+| 查 Profile | `project_profile.sh --check` | 校验 project-profile.json 格式 |
 
 ## 7. 别手改的文件
 
