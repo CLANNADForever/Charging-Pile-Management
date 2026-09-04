@@ -1,0 +1,162 @@
+{
+  "schema_version": 2,
+  "workflow": "openspec",
+  "setup_cli": {
+    "executable": "setup_ai_harness.sh",
+    "default_mode": "openspec",
+    "modes": [
+      {"id": "openspec", "selector": null, "read_only": false, "compatible_options": ["--force", "--project-profile"]},
+      {"id": "detect", "selector": "--detect-project", "read_only": true, "compatible_options": ["--json"]},
+      {"id": "migration", "selector": "--migrate-openspec", "read_only": false, "compatible_options": ["--dry-run", "--project-profile"]}
+    ],
+    "options": [
+      {"canonical": "--detect-project", "aliases": [], "arity": 0, "terminal": false},
+      {"canonical": "--json", "aliases": [], "arity": 0, "terminal": false},
+      {"canonical": "--project-profile", "aliases": [], "arity": 1, "terminal": false},
+      {"canonical": "--force", "aliases": [], "arity": 0, "terminal": false},
+      {"canonical": "--migrate-openspec", "aliases": [], "arity": 0, "terminal": false},
+      {"canonical": "--dry-run", "aliases": [], "arity": 0, "terminal": false},
+      {"canonical": "--version", "aliases": [], "arity": 0, "terminal": true},
+      {"canonical": "--help", "aliases": ["-h"], "arity": 0, "terminal": true}
+    ],
+    "constraints": [
+      {"id": "json-requires-detect", "kind": "requires", "options": ["--json", "--detect-project"]},
+      {"id": "dry-run-requires-migration", "kind": "requires", "options": ["--dry-run", "--migrate-openspec"]},
+      {"id": "force-conflicts-migration", "kind": "conflicts", "options": ["--force", "--migrate-openspec"]},
+      {"id": "detect-exclusive", "kind": "exclusive-with-any", "options": ["--detect-project", "--force", "--migrate-openspec", "--dry-run", "--project-profile"]}
+    ],
+    "test_discovery": {
+      "relative_directory": "tests/openspec-integration/cases",
+      "runner_function": "run_setup",
+      "negative_options": ["--definitely-unknown"]
+    }
+  },
+  "state_ownership": {
+    "planning": "openspec",
+    "active_selector": "ai_snapshot.json",
+    "project_capabilities": ".ai-harness/project-profile.json",
+    "execution_evidence": "openspec/changes/<change>/harness",
+    "final_verdict": "evaluator"
+  },
+  "roles": [
+    {
+      "id": "planner",
+      "inputs": ["openspec/specs", ".ai-harness/project-profile.json", "project source"],
+      "outputs": ["proposal", "design", "delta specs", "tasks"]
+    },
+    {
+      "id": "generator",
+      "inputs": ["approved OpenSpec change", "one task", "Project Profile command IDs"],
+      "outputs": ["project code", "project tests", "change-local verification evidence"]
+    },
+    {
+      "id": "evaluator",
+      "inputs": ["OpenSpec change", "complete Git state", "consumer evidence", "Project Profile"],
+      "outputs": ["one final Evaluation verdict"]
+    }
+  ],
+  "gates": [
+    {"id": "planning-strict-validation", "phase": "planning", "script": "scripts/openspec_preflight.sh", "failure_mode": "fail-closed"},
+    {"id": "project-profile", "phase": "initialization", "script": "scripts/project_profile.sh", "failure_mode": "fail-closed"},
+    {"id": "integration-completeness", "phase": "planning-and-evaluation", "script": "scripts/integration_surface_check.sh", "failure_mode": "fail-closed"},
+    {"id": "direct-verification", "phase": "implementation", "script": "scripts/task_verify.sh", "failure_mode": "fail-closed"},
+    {"id": "independent-evaluation", "phase": "evaluation", "script": "scripts/evaluator_check.sh", "failure_mode": "fail-closed"},
+    {"id": "archive", "phase": "archive", "script": "scripts/change_archive.sh", "failure_mode": "fail-closed"}
+  ],
+  "artifact_ownership": [
+    {"path": "openspec/specs/", "owner": "openspec-team", "update_policy": "never-overwrite"},
+    {"path": "openspec/changes/", "owner": "openspec-team-and-runtime-evidence", "update_policy": "managed-create-or-atomic-update"},
+    {"path": "ai_snapshot.json", "owner": "runtime-selector", "update_policy": "managed-atomic-update"},
+    {"path": ".ai-harness/project-profile.json", "owner": "team", "update_policy": "never-overwrite"},
+    {"path": ".ai-harness/derived/", "owner": "derived", "update_policy": "rebuildable"},
+    {"path": "scripts/", "owner": "harness-template", "update_policy": "backup-before-force-update"}
+  ],
+  "schema_compatibility": {
+    "project_profile": [1],
+    "root_snapshot": [2],
+    "change_snapshot": [2, 3, 4],
+    "verification": [1, 2, 3],
+    "evaluation": [1, 2, 3]
+  },
+  "schema_upgrades": [
+    {
+      "id": "verification-v1-to-v2",
+      "script": "scripts/task_verify.sh",
+      "option": "--upgrade-v2",
+      "from": {"verification": 1, "change_snapshot": 2},
+      "to": {"verification": 2, "change_snapshot": 3},
+      "eligibility": "evidence-empty-only"
+    },
+    {
+      "id": "verification-v2-to-v3",
+      "script": "scripts/task_verify.sh",
+      "option": "--upgrade-v3",
+      "from": {"verification": 2, "change_snapshot": 3},
+      "to": {"verification": 3, "change_snapshot": 4},
+      "eligibility": "evidence-empty-only"
+    }
+  ],
+  "managed_scripts": [
+    "scripts/openspec_cli.sh",
+    "scripts/openspec_preflight.sh",
+    "scripts/attribution_check.sh",
+    "scripts/harness_lock.sh",
+    "scripts/project_detect.sh",
+    "scripts/project_profile.sh",
+    "scripts/project_command.sh",
+    "scripts/workflow_contract_check.sh",
+    "scripts/harness_doctor.sh",
+    "scripts/project_index.sh",
+    "scripts/context_slice.sh",
+    "scripts/campaign.sh",
+    "scripts/event_audit.sh",
+    "scripts/organization_policy.sh",
+    "scripts/integration_surface_check.sh",
+    "scripts/change_new.sh",
+    "scripts/change_adopt.sh",
+    "scripts/change_select.sh",
+    "scripts/change_status.sh",
+    "scripts/change_archive.sh",
+    "scripts/archive_recover.sh",
+    "scripts/source_fingerprint.sh",
+    "scripts/change_footprint.sh",
+    "scripts/task_verify.sh",
+    "scripts/evaluator_check.sh",
+    "scripts/verification_workspace.sh",
+    "scripts/snapshot_update.sh",
+    "scripts/resume_from_snapshot.sh",
+    "scripts/context_reset_check.sh",
+    "scripts/quick_brief_check.sh",
+    "scripts/rca_new.sh",
+    "scripts/ai_debt_scan.sh"
+  ],
+  "public_commands": [
+    "scripts/project_detect.sh",
+    "scripts/project_profile.sh",
+    "scripts/project_command.sh",
+    "scripts/harness_doctor.sh",
+    "scripts/change_new.sh",
+    "scripts/change_adopt.sh",
+    "scripts/change_select.sh",
+    "scripts/change_status.sh",
+    "scripts/change_archive.sh",
+    "scripts/project_index.sh",
+    "scripts/context_slice.sh",
+    "scripts/campaign.sh",
+    "scripts/event_audit.sh",
+    "scripts/organization_policy.sh",
+    "scripts/task_verify.sh",
+    "scripts/evaluator_check.sh"
+  ],
+  "prompt_references": [
+    {"path": "CLAUDE.md", "role": "control", "facts": ["openspec-only-planning", "single-active-selector", "single-evaluator-verdict", "project-profile-command-ids"]},
+    {"path": "AGENTS.md", "role": "control", "facts": ["generator-direct-evidence", "evaluator-independent-evidence", "single-evaluator-verdict", "project-profile-command-ids"]},
+    {"path": "prompts/planner.md", "role": "planner", "facts": ["planner-no-product-code", "project-profile-command-ids", "strict-plan-check"]},
+    {"path": "prompts/generator.md", "role": "generator", "facts": ["generator-direct-evidence", "project-profile-command-ids", "unplanned-surface-returns-planner"]},
+    {"path": "prompts/evaluator.md", "role": "evaluator", "facts": ["evaluator-independent-evidence", "single-evaluator-verdict", "project-profile-command-ids"]},
+    {"path": "prompts/archive.md", "role": "archive", "facts": ["archive-wrapper-only", "archive-fail-closed"]}
+  ],
+  "documentation_references": [
+    {"path": "docs/ai/workflow.md", "role": "workflow-documentation", "facts": ["schema-upgrade-v2-explicit", "schema-upgrade-v3-explicit", "project-profile-command-ids", "single-evaluator-verdict"]}
+  ]
+}

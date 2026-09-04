@@ -1,0 +1,3 @@
+# Handoff prompt
+
+Use `snapshot_update.sh` only for the root/local phase, current-step and next-step cursor; never add another active selector or invent snapshot fields. Changed paths and Generator command results belong in managed verification evidence, derived candidates belong in `integration-surface-report.json`, Evaluation blockers belong in evaluation evidence, and diagnosed defects belong in change-local RCA. On resume, derive the active must-read set from the root selector plus the active OpenSpec artifacts and those evidence files; if the surface report exists, it is mandatory reading. Do not claim acceptance unless a complete fresh unified Evaluation Pass exists.

@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  This is a Git-managed C++ project whose build and verification capabilities
+  are described by .ai-harness/project-profile.json.
+  Canonical engineering rules live in CLAUDE.md, AGENTS.md and docs/ai/.
+  Inspect existing source, tests, helpers, build graph entries, consumers and fixtures before
+  proposing or implementing new logic.
+  Generator and Evaluator are separate roles.
+  Final completion requires fresh real-command evidence.
+
+rules:
+  proposal:
+    - Include explicit goals and non-goals.
+    - Identify affected capabilities and likely code areas.
+    - Keep one logical, independently reviewable intent per change.
+    - Classify external contract impact as none, compatible or breaking.
+    - Mark breaking contract changes as BREAKING and identify affected consumers.
+  specs:
+    - Describe observable behavior instead of implementation detail.
+    - Include normal, boundary and error scenarios when applicable.
+    - A MODIFIED requirement must contain the complete updated requirement.
+  design:
+    - Investigate main specs, Project Profile, related source, callers, tests, build graph entries, distribution surfaces and reuse points before choosing an approach.
+    - Compare two or three real alternatives when meaningful trade-offs exist; otherwise record why one path is sufficient.
+    - Record goals, non-goals, the chosen approach and a final self-review for contradictions, placeholders and scope creep.
+    - Record TDD applicability; an exception needs an explicit scope, reason, alternative verification, exit condition and user approval.
+    - Include one machine-readable Implementation Economy v2 budget block.
+    - Classify changed paths and record reuse candidates and obsolete-item disposition.
+    - Give every allowance, reuse decision, obsolete item and exception a unique ID.
+    - Cover dependency, compatibility, rollback and migration risks when applicable.
+    - For contract changes, explain the current problem and the chosen transition path.
+  tasks:
+    - Keep tasks ordered, small and independently verifiable.
+    - Reference the operation and requirement implemented by each task, plus scenarios when present.
+    - Include focused test or verification work and its expected command type.
+    - For behavior changes, plan a RED, GREEN, REFACTOR and REGRESSION cycle unless the approved design records an exception.
+    - Do not let Generator change budgets, classification rules or approved exceptions.
+    - Reference stable Project Profile command IDs for reusable project build and verification capabilities; managed evidence invokes them through the task or Evaluation wrapper's --project-command option.
+    - Check a task only after its direct verification succeeds.

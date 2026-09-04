@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {
+      "id": "qmake-1",
+      "root": ".",
+      "adapter": "qmake",
+      "cpp_standards": [
+        "unknown"
+      ],
+      "compilers": [
+        "unknown"
+      ],
+      "target_platforms": [
+        "unknown"
+      ],
+      "path_roles": {
+        "production": [],
+        "test": [],
+        "example": [],
+        "generated": [],
+        "vendor": [],
+        "build_metadata": []
+      },
+      "capabilities": {},
+      "capability_status": {},
+      "build_targets": [],
+      "build_graph_entries": [],
+      "distribution_surfaces": []
+    }
+  ],
+  "commands": [],
+  "toolchain_identity": []
+}

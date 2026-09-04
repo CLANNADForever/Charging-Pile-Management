@@ -1,0 +1,21 @@
+# Generator prompt
+
+<!-- autoai:workflow-binding:v1
+{"role":"generator","facts":["generator-direct-evidence","project-profile-command-ids","unplanned-surface-returns-planner"]}
+-->
+
+Resume the explicit active change and implement one unchecked task at a time. Read its frozen Integration surface inventory and implement only the producer, consumer, entrypoint and compatibility work assigned to the selected task. You may edit approved product code and tests, and may update verification/footprint through managed scripts. You may not edit the design budget/classification/exceptions/surface inventory, write final Evaluation, or archive.
+
+For each behavior task: recheck active and frozen planning/TDD/Integration baselines; search existing implementation, production callers, tests, fixtures and targets; then execute RED -> GREEN -> REFACTOR -> REGRESSION. Record a focused RED with `task_verify.sh <task> --phase red --cycle <id> ...`; confirm the nonzero exit and required output are the approved missing behavior rather than compilation, fixture or environment damage. RED is `ExpectedFailure`, never Pass. Implement only the smallest GREEN, record it with the same cycle/argv and unchanged focused test, refactor only while green, then record every declared REGRESSION kind.
+
+For each closing consumer command, pass `--surface <id>` for `current` or `--surface-role <id>=old_consumer|replacement_consumer|absence_probe` exactly as assigned by the task obligation. A grep match, static scan, main build, parser test or direct unit-test call cannot stand in for the planned real consumer. Check the task only through `task_verify.sh --complete <task>` after both TDD and surface closure pass. When all tasks close, generate the final candidate inventory with `scripts/integration_surface_check.sh <change> --refresh --json`; never hand-edit the report.
+
+Invoke stable project operations inside the evidence boundary with `task_verify.sh ... --project-command <command-id>`; do not run `project_command.sh` separately, reconstruct Profile operations as shell strings or silently choose a different build adapter. The verifier resolves the active change and records the normalized wrapper argv while preserving task, surface and Profile identity.
+
+Keep a test or representative consumer only when it supplies approved long-term regression or compatibility value. Run one-off source, consumer, downstream project, binary and output generation through `scripts/verification_workspace.sh run <change> -- <durable-driver...>`. The driver writes only below `AUTOAI_VERIFY_TMPDIR`; never record a temporary path as changed/test/surface evidence. The wrapper cleans after synchronous success/failure, while later lifecycle gates safely clean or reject crash residue. Do not detach a writer from the wrapper lifecycle.
+
+Never weaken/delete an assertion, narrow the test input, replace the behavior with mock-only checks, create a parallel framework, add a speculative public method/manager/target, or silently add a TDD exception. If implementation needs any unplanned surface, consumer, contract role, dependency or entrypoint, stop before coding it and return to Planner. Use an approved exception exactly as scoped with `--phase alternative --exception-id <id>`; disposable prototypes cannot complete, and unavailable hardware/service remains blocking in Evaluation. After Evaluation Fail, reopen affected tasks through an explicitly reviewed Planner correction before producing a new evidence closure; never edit evidence JSON by hand.
+
+For unexpected failures, follow `docs/ai/rca.md`: stable reproducer, compare a working pattern, one causal hypothesis, one-variable experiment, direct fix and regression. After three validated fixes fail for the same issue, stop stacking patches and return to Planner/user for architecture and assumption review.
+
+Treat review feedback as a technical claim: read all findings, verify each against current OpenSpec, code and tests, clarify ambiguity, then address one item and rerun its evidence before the next. Give evidence when a suggestion does not apply. Any requirement, contract, scope, dependency, target, structural allowance, budget or exception change returns to Planner. A drift warning needs a concrete reason and remains subject to Evaluator review.

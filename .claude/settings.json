@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/openspec_cli.sh --version)",
+      "Bash(scripts/openspec_cli.sh status:*)",
+      "Bash(scripts/openspec_cli.sh instructions:*)",
+      "Bash(scripts/openspec_cli.sh validate:*)",
+      "Bash(scripts/attribution_check.sh:*)",
+      "Bash(scripts/change_new.sh:*)",
+      "Bash(scripts/change_adopt.sh:*)",
+      "Bash(scripts/change_select.sh:*)",
+      "Bash(scripts/change_status.sh:*)",
+      "Bash(scripts/change_footprint.sh:*)",
+      "Bash(scripts/integration_surface_check.sh:*)",
+      "Bash(scripts/project_profile.sh:*)",
+      "Bash(scripts/project_command.sh:*)",
+      "Bash(scripts/harness_doctor.sh:*)",
+      "Bash(scripts/task_verify.sh:*)",
+      "Bash(scripts/evaluator_check.sh:*)",
+      "Bash(scripts/harness_lock.sh isolation-status:*)",
+      "Bash(scripts/change_archive.sh:*)",
+      "Bash(scripts/archive_recover.sh:*)"
+    ],
+    "deny": [
+      "Bash(openspec:*)",
+      "Bash(npx openspec:*)",
+      "Bash(scripts/harness_lock.sh isolation-acquire:*)",
+      "Bash(scripts/harness_lock.sh isolation-baseline:*)",
+      "Bash(scripts/harness_lock.sh isolation-activate:*)",
+      "Bash(scripts/harness_lock.sh isolation-release:*)",
+      "Bash(scripts/harness_lock.sh isolation-recover:*)",
+      "Bash(scripts/harness_lock.sh isolation-disable:*)",
+      "Bash(scripts/openspec_cli.sh archive:*)"
+    ]
+  }
+}
