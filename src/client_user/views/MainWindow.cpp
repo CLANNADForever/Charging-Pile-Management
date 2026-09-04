@@ -1,33 +1,34 @@
 #include "MainWindow.h"
 
-#include <QLabel>
-#include <QVBoxLayout>
-#include <QWidget>
+#include <QStackedWidget>
 
-#include "entities.h"
+#include "services/IUserService.h"
+#include "views/LoginPage.h"
+#include "views/ProfilePage.h"
 
 namespace ncs {
 namespace client {
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+MainWindow::MainWindow(IUserService* service, QWidget* parent)
+    : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("NCS 车主端"));
-    setObjectName("ncsUserMainWindow");
+    setObjectName(QStringLiteral("ncsUserMainWindow"));
     setFixedSize(420, 760);  // SRS：C 端强制竖屏 420x760
 
-    auto* central = new QWidget(this);
-    auto* layout = new QVBoxLayout(central);
-    auto* title = new QLabel(QString::fromUtf8(project_name()), central);
-    title->setObjectName("homeTitle");
-    title->setAlignment(Qt::AlignCenter);
-    auto* placeholder = new QLabel(
-        QStringLiteral("骨架就绪\n选桩 / 我的 等页面由后续 change 加入"), central);
-    placeholder->setObjectName("homePlaceholder");
-    placeholder->setAlignment(Qt::AlignCenter);
-    layout->addStretch();
-    layout->addWidget(title);
-    layout->addWidget(placeholder);
-    layout->addStretch();
-    setCentralWidget(central);
+    stack_ = new QStackedWidget(this);
+    auto* loginPage = new LoginPage(service, stack_);
+    profilePage_ = new ProfilePage(User{}, stack_);  // 登录成功后 setUser 填充
+    stack_->addWidget(loginPage);                    // index 0
+    stack_->addWidget(profilePage_);                 // index 1
+    setCentralWidget(stack_);
+
+    connect(loginPage, &LoginPage::loginSucceeded,
+            this, &MainWindow::onLoginSucceeded);
+}
+
+void MainWindow::onLoginSucceeded(const ncs::User& user) {
+    profilePage_->setUser(user);
+    stack_->setCurrentIndex(1);
 }
 
 }  // namespace client

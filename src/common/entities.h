@@ -4,16 +4,18 @@
 
 #include <QString>
 
+#include "money.h"
+
 namespace ncs {
 
 // 供测试与界面使用的工程标识
 const char* project_name();
 
-// 用户：11 位手机号为免密登录主键
+// 用户：11 位手机号为免密登录主键；金额一律为"分"
 struct User {
     QString phone;
     QString nickname;
-    double balance = 0.0;
+    MoneyCents balanceCents = 0;
 };
 
 // 充电桩运行状态
@@ -23,7 +25,7 @@ enum class DeviceState : int {
     Fault = 2,     // 故障
 };
 
-// 充电桩(本片起步字段，运营端字段后续 change 再加)
+// 充电桩(起步字段，运营端字段后续 change 再加)
 struct Device {
     int id = 0;
     DeviceState state = DeviceState::Idle;

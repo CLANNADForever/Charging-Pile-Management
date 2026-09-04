@@ -3,14 +3,29 @@
 
 #include <QMainWindow>
 
+#include "entities.h"
+
+class QStackedWidget;
+
 namespace ncs {
 namespace client {
 
-// C 端主窗口：本片只做竖屏壳窗占位，登录/选桩/我的等页面由后续 change 加入。
+class IUserService;
+class LoginPage;
+class ProfilePage;
+
+// C 端主窗口：竖屏壳窗，中央为页面堆栈。登录成功后切到个人中心占位页。
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(IUserService* service, QWidget* parent = nullptr);
+
+private slots:
+    void onLoginSucceeded(const ncs::User& user);
+
+private:
+    QStackedWidget* stack_ = nullptr;
+    ProfilePage* profilePage_ = nullptr;
 };
 
 }  // namespace client
