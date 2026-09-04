@@ -13,11 +13,6 @@ const QRegularExpression& phoneRe() {
 const QString kMockCode = QStringLiteral("123456");
 }  // namespace
 
-QHash<QString, User>& MockUserService::users() {
-    static QHash<QString, User> store;
-    return store;
-}
-
 LoginResult MockUserService::requestCode(const QString& phone) {
     LoginResult r;
     if (!phoneRe().match(phone).hasMatch()) {
@@ -39,7 +34,7 @@ LoginResult MockUserService::login(const QString& phone, const QString& code) {
         r.message = QStringLiteral("验证码错误");
         return r;
     }
-    User& u = users()[phone];  // 不存在则自动注册新用户
+    User& u = users_[phone];  // 不存在则自动注册新用户
     if (u.phone.isEmpty()) {
         u.phone = phone;
         u.nickname = QStringLiteral("充电用户") + phone.right(4);
