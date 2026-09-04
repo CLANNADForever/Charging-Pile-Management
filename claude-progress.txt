@@ -1,3 +1,0 @@
-# AutoAI progress
-
-Workflow: OpenSpec. Use the root snapshot only to select the active change; derive status from OpenSpec and change-local evidence.

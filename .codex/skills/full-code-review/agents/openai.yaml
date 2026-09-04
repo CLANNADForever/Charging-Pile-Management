@@ -1,4 +1,0 @@
-interface:
-  display_name: "Full Code Review"
-  short_description: "Whole-repository post-development review"
-  default_prompt: "Review the whole completed repository using prompts/full-code-review.md."

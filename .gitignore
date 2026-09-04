@@ -3,9 +3,3 @@ build/
 .env
 .env.*
 *.log
-.claude/settings.local.json
-.vscode/*.log
-.ai-harness/locks/
-.ai-harness/logs/
-.ai-harness/migrations/
-.ai-harness/derived/
