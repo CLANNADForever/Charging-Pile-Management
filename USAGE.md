@@ -73,7 +73,7 @@ Planner 会写好 `openspec/changes/<name>/`（proposal/specs/design/tasks）然
 Generator 每个 task 会用 `./scripts/task_verify.sh` 记证据（RED 记"预期失败"、REGRESSION 用
 `--project-command build` 跑真实构建），做完生成 surface report。
 
-**你的活**：`cd build && qmake ../charging-pile.pro && make -j2` 自己编一次；GUI 改动用 X11
+**你的活**：`cmake -S . -B build && cmake --build build -j 2` 自己编一次（产物 `build/charging-pile`）；GUI 改动用 X11
 弹出来**亲眼看**——这是你的证据，要报给 Evaluator。
 
 ### 窗口 3 = Evaluator（独立验收，**必须新开会话**）
@@ -116,7 +116,7 @@ Pass → 归档（硬门禁，前面全绿才放行）：
 ## 4. 当前状态与还差什么
 
 - Profile 命令（`.ai-harness/project-profile.json`，团队所有、Harness 永不覆盖）：
-  - `configure`（qmake → build/）、`build`（make -j2）→ **available**
+  - `configure`（cmake -S . -B build）、`build`（cmake --build build -j 2）→ **available**
   - `gxx-id`（g++ 身份，toolchain identity）→ available
   - `test`、`target-run` → **needs-approval**（还没 QtTest target、GUI 没定人工验收方式）
 - 建议第一个 change：`add-qttest-target`——仿 `workspace/calc_tests` 加 QtTest 无头测试，
@@ -156,4 +156,4 @@ Pass → 归档（硬门禁，前面全绿才放行）：
 
 `AGENTS.md`、`CLAUDE.md`、`prompts/`、`scripts/`、`docs/ai/`、`.claude/` 都是 AutoAI 管理模板
 （`setup_ai_harness.sh --force` 会备份后更新，但不会覆盖你团队的文件）。要动的是：
-`src/`、`*.pro`、`.ai-harness/project-profile.json`、`docs/`(你自己的文档)、`openspec/changes/`(文书)。
+`src/`、`CMakeLists.txt`、`.ai-harness/project-profile.json`、`docs/`(你自己的文档)、`openspec/changes/`(文书)。
