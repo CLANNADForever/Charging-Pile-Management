@@ -1,11 +1,10 @@
-#include "mainwindow.h"
+#include "views/MainWindow.h"
 
 #include <QApplication>
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-    MainWindow w;
+    ncs::client::MainWindow w;
     w.show();
     return app.exec();
 }

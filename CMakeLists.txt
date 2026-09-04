@@ -5,11 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 
-add_executable(charging-pile
-    src/main.cpp
-    src/mainwindow.cpp
-    src/mainwindow.h
-)
-target_link_libraries(charging-pile PRIVATE Qt6::Widgets)
+add_subdirectory(src)
+
+enable_testing()
+add_subdirectory(tests)
