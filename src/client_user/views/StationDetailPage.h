@@ -22,6 +22,7 @@ public:
 
 signals:
     void backRequested();
+    void deviceChosen(int deviceId);
 
 private:
     IStationService* service_ = nullptr;

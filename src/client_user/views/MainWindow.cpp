@@ -2,8 +2,10 @@
 
 #include <QStackedWidget>
 
+#include "services/IChargeService.h"
 #include "services/IStationService.h"
 #include "services/IUserService.h"
+#include "views/ChargePage.h"
 #include "views/LoginPage.h"
 #include "views/ProfilePage.h"
 #include "views/StationDetailPage.h"
@@ -13,7 +15,8 @@ namespace ncs {
 namespace client {
 
 MainWindow::MainWindow(IUserService* userService,
-                       IStationService* stationService, QWidget* parent)
+                       IStationService* stationService,
+                       IChargeService* chargeService, QWidget* parent)
     : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("NCS 车主端"));
     setObjectName(QStringLiteral("ncsUserMainWindow"));
@@ -24,10 +27,12 @@ MainWindow::MainWindow(IUserService* userService,
     profilePage_ = new ProfilePage(User{}, stack_);
     stationPage_ = new StationListPage(stationService, stack_);
     detailPage_ = new StationDetailPage(stationService, stack_);
+    chargePage_ = new ChargePage(chargeService, stack_);
     stack_->addWidget(loginPage);     // 0
     stack_->addWidget(profilePage_);  // 1
     stack_->addWidget(stationPage_);  // 2
     stack_->addWidget(detailPage_);   // 3
+    stack_->addWidget(chargePage_);   // 4
     setCentralWidget(stack_);
 
     connect(loginPage, &LoginPage::loginSucceeded, this,
@@ -38,9 +43,14 @@ MainWindow::MainWindow(IUserService* userService,
             &MainWindow::onStationChosen);
     connect(detailPage_, &StationDetailPage::backRequested, this,
             &MainWindow::onDetailBack);
+    connect(detailPage_, &StationDetailPage::deviceChosen, this,
+            &MainWindow::onDeviceChosen);
+    connect(chargePage_, &ChargePage::backRequested, this,
+            &MainWindow::onChargeBack);
 }
 
 void MainWindow::onLoginSucceeded(const ncs::User& user) {
+    userPhone_ = user.phone;
     profilePage_->setUser(user);
     stack_->setCurrentIndex(1);
 }
@@ -57,6 +67,15 @@ void MainWindow::onStationChosen(int stationId) {
 
 void MainWindow::onDetailBack() {
     stack_->setCurrentIndex(2);
+}
+
+void MainWindow::onDeviceChosen(int deviceId) {
+    chargePage_->startSession(userPhone_, deviceId);
+    stack_->setCurrentIndex(4);
+}
+
+void MainWindow::onChargeBack() {
+    stack_->setCurrentIndex(3);
 }
 
 }  // namespace client

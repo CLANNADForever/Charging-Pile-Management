@@ -10,6 +10,9 @@ add_library(ncs_user_ui STATIC
     services/HttpJsonClient.h
     services/HttpJsonClient.cpp
     services/IStationService.h
+    services/IChargeService.h
+    services/HttpChargeService.h
+    services/HttpChargeService.cpp
     services/HttpStationService.h
     services/HttpStationService.cpp
     views/MainWindow.cpp
@@ -22,6 +25,8 @@ add_library(ncs_user_ui STATIC
     views/StationListPage.h
     views/StationDetailPage.cpp
     views/StationDetailPage.h
+    views/ChargePage.cpp
+    views/ChargePage.h
 )
 target_include_directories(ncs_user_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ncs_user_ui PUBLIC Qt6::Widgets Qt6::Network ncs_common)

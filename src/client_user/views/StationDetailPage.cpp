@@ -2,6 +2,7 @@
 
 #include <QLabel>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -52,6 +53,10 @@ StationDetailPage::StationDetailPage(IStationService* service, QWidget* parent)
 
     connect(backBtn_, &QPushButton::clicked, this,
             &StationDetailPage::backRequested);
+    connect(list_, &QListWidget::itemClicked, this,
+            [this](QListWidgetItem* item) {
+                emit deviceChosen(item->data(Qt::UserRole).toInt());
+            });
 }
 
 void StationDetailPage::load(int stationId) {
@@ -81,7 +86,11 @@ void StationDetailPage::load(int stationId) {
                         .arg(typeText(d.type))
                         .arg(stateText(d.state))
                         .arg(d.powerKw, 0, 'f', 1);
-                list_->addItem(new QListWidgetItem(line, list_));
+                {
+                auto* item = new QListWidgetItem(line, list_);
+                item->setData(Qt::UserRole, d.id);
+                list_->addItem(item);
+            }
             }
         });
 }
