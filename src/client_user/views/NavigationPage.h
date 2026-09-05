@@ -4,14 +4,14 @@
 #include <QWidget>
 
 class QLabel;
-class QPushButton;
 class QVBoxLayout;
 class QWebEngineView;
 
 namespace ncs {
 namespace client {
 
-// 导航/路线页：内嵌 QWebEngineView 地图(Leaflet/OSM 两点+直线)，懒创建避免无头测试触发。
+// 导航/路线页：内嵌 QWebEngineView 加载 腾讯地图 URI 路线(免 key 免鉴权渲染)，
+// 另提供外部打开兜底。view 懒创建，避免无头测试触发引擎。
 class NavigationPage : public QWidget {
     Q_OBJECT
 public:
@@ -24,12 +24,12 @@ signals:
 
 private:
     void ensureView();
+    QString routeUrl() const;
 
     double myLat_ = 0, myLng_ = 0, stLat_ = 0, stLng_ = 0;
     QString stName_;
     QVBoxLayout* layout_ = nullptr;
     QLabel* info_ = nullptr;
-    QPushButton* openBtn_ = nullptr;
     QWebEngineView* view_ = nullptr;
 };
 
