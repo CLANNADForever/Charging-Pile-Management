@@ -61,11 +61,13 @@ void MainWindow::onGoFindStations() {
 }
 
 void MainWindow::onStationChosen(int stationId) {
+    lastStationId_ = stationId;
     detailPage_->load(stationId);
     stack_->setCurrentIndex(3);
 }
 
 void MainWindow::onDetailBack() {
+    stationPage_->refresh();
     stack_->setCurrentIndex(2);
 }
 
@@ -75,6 +77,8 @@ void MainWindow::onDeviceChosen(int deviceId) {
 }
 
 void MainWindow::onChargeBack() {
+    if (lastStationId_ > 0)
+        detailPage_->load(lastStationId_);
     stack_->setCurrentIndex(3);
 }
 

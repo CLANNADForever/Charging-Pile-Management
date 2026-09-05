@@ -38,6 +38,7 @@ private slots:
 
 private:
     QString userPhone_;
+    int lastStationId_ = 0;
     QStackedWidget* stack_ = nullptr;
     ProfilePage* profilePage_ = nullptr;
     StationListPage* stationPage_ = nullptr;

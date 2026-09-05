@@ -397,9 +397,10 @@ bool BackendApp::startReserveSweeper(int timeoutSec) {
             if (!sweepRunning_.load())
                 break;
             const int n = charge_->sweepExpiredReservations(timeoutSec);
-            if (n > 0)
+            if (n > 0) {
                 std::printf("[sweep] released %d expired reservation(s)", n);
                 std::putchar(10);
+            }
         }
     });
     return true;

@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "[ERR] %s\n", qPrintable(app.lastError()));
         return 1;
     }
+    app.startReserveSweeper(reserveTimeoutSec);  // start sweeper: auto-release expired reservations
     if (!app.startSimListener(simPort)) {
         std::fprintf(stderr, "[WARN] 模拟器 TCP 监听失败 port=%d(继续 HTTP)\n",
                      simPort);
