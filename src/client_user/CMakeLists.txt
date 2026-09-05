@@ -27,6 +27,8 @@ add_library(ncs_user_ui STATIC
     views/StationDetailPage.h
     views/ChargePage.cpp
     views/ChargePage.h
+    views/MySessionsPage.cpp
+    views/MySessionsPage.h
 )
 target_include_directories(ncs_user_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ncs_user_ui PUBLIC Qt6::Widgets Qt6::Network ncs_common)

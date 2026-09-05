@@ -19,6 +19,7 @@ public:
 
 signals:
     void goFindStations();
+    void goSessions();
 
 private:
     QLabel* nickname_ = nullptr;

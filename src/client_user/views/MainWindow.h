@@ -18,8 +18,9 @@ class ProfilePage;
 class StationListPage;
 class StationDetailPage;
 class ChargePage;
+class MySessionsPage;
 
-// C 端主窗口：页面堆栈 0登录 1个人 2找桩 3站内桩 4充电会话。
+// C 端主窗口：页面堆栈 0登录 1个人 2找桩 3站内桩 4充电会话 5我的充电会话。
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -35,15 +36,19 @@ private slots:
     void onDetailBack();
     void onDeviceChosen(int deviceId);
     void onChargeBack();
+    void onGoSessions();
+    void onSessionChosen(const ncs::Order& order);
 
 private:
     QString userPhone_;
     int lastStationId_ = 0;
+    int chargeOrigin_ = 3;  // 进入充电会话前所在页(3=站内桩 5=我的会话)
     QStackedWidget* stack_ = nullptr;
     ProfilePage* profilePage_ = nullptr;
     StationListPage* stationPage_ = nullptr;
     StationDetailPage* detailPage_ = nullptr;
     ChargePage* chargePage_ = nullptr;
+    MySessionsPage* sessionsPage_ = nullptr;
 };
 
 }  // namespace client

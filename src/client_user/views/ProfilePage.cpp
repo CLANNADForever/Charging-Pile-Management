@@ -27,6 +27,8 @@ ProfilePage::ProfilePage(const ncs::User& user, QWidget* parent)
 
     auto* goStation = new QPushButton(QStringLiteral("周边找桩"), this);
     goStation->setObjectName(QStringLiteral("btnGoStations"));
+    auto* goSessions = new QPushButton(QStringLiteral("我的充电会话"), this);
+    goSessions->setObjectName(QStringLiteral("btnMySessions"));
 
     auto* note = new QLabel(QStringLiteral("占位：钱包 / 历史订单 / 设置 由后续加入"), this);
     note->setObjectName(QStringLiteral("profileNote"));
@@ -40,11 +42,13 @@ ProfilePage::ProfilePage(const ncs::User& user, QWidget* parent)
     layout->addWidget(balance_);
     layout->addSpacing(16);
     layout->addWidget(goStation);
+    layout->addWidget(goSessions);
     layout->addSpacing(16);
     layout->addWidget(note);
     layout->addStretch();
 
     connect(goStation, &QPushButton::clicked, this, &ProfilePage::goFindStations);
+    connect(goSessions, &QPushButton::clicked, this, &ProfilePage::goSessions);
     setUser(user);
 }
 
