@@ -35,11 +35,16 @@ StationDetailPage::StationDetailPage(IStationService* service, QWidget* parent)
     setObjectName(QStringLiteral("stationDetailPage"));
     auto* layout = new QVBoxLayout(this);
     auto* heading = new QLabel(QStringLiteral("站内电桩"), this);
+    info_ = new QLabel(QStringLiteral(""), this);
+    info_->setObjectName(QStringLiteral("deviceStationInfo"));
+    info_->setWordWrap(true);
     heading->setObjectName(QStringLiteral("deviceHeading"));
     heading->setAlignment(Qt::AlignCenter);
 
     list_ = new QListWidget(this);
     list_->setObjectName(QStringLiteral("deviceList"));
+    auto* navBtn = new QPushButton(QStringLiteral("导航到站"), this);
+    navBtn->setObjectName(QStringLiteral("btnNavigate"));
     backBtn_ = new QPushButton(QStringLiteral("返回"), this);
     backBtn_->setObjectName(QStringLiteral("btnDeviceBack"));
     status_ = new QLabel(this);
@@ -47,16 +52,29 @@ StationDetailPage::StationDetailPage(IStationService* service, QWidget* parent)
     status_->setWordWrap(true);
 
     layout->addWidget(heading);
+    layout->addWidget(info_);
     layout->addWidget(list_, 1);
+    layout->addWidget(navBtn);
     layout->addWidget(backBtn_);
     layout->addWidget(status_);
 
     connect(backBtn_, &QPushButton::clicked, this,
             &StationDetailPage::backRequested);
+    connect(navBtn, &QPushButton::clicked, this,
+            &StationDetailPage::navRequested);
     connect(list_, &QListWidget::itemClicked, this,
             [this](QListWidgetItem* item) {
                 emit deviceChosen(item->data(Qt::UserRole).toInt());
             });
+}
+
+void StationDetailPage::setStation(const ncs::Station& st) {
+    stationName_ = st.name;
+    stationLat_ = st.latitude;
+    stationLng_ = st.longitude;
+    info_->setText(QStringLiteral("%1 · %2")
+                      .arg(st.name)
+                      .arg(st.address));
 }
 
 void StationDetailPage::load(int stationId) {

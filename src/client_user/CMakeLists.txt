@@ -1,6 +1,5 @@
 find_package(Qt6 REQUIRED COMPONENTS Network)
 
-# C 端逻辑与界面库：services/ + views/
 add_library(ncs_user_ui STATIC
     services/IUserService.h
     services/MockUserService.h
@@ -10,11 +9,11 @@ add_library(ncs_user_ui STATIC
     services/HttpJsonClient.h
     services/HttpJsonClient.cpp
     services/IStationService.h
+    services/HttpStationService.h
+    services/HttpStationService.cpp
     services/IChargeService.h
     services/HttpChargeService.h
     services/HttpChargeService.cpp
-    services/HttpStationService.h
-    services/HttpStationService.cpp
     views/MainWindow.cpp
     views/MainWindow.h
     views/LoginPage.cpp
@@ -29,9 +28,17 @@ add_library(ncs_user_ui STATIC
     views/ChargePage.h
     views/MySessionsPage.cpp
     views/MySessionsPage.h
+    views/HistoryPage.cpp
+    views/HistoryPage.h
+    views/NavigationPage.cpp
+    views/NavigationPage.h
 )
 target_include_directories(ncs_user_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ncs_user_ui PUBLIC Qt6::Widgets Qt6::Network ncs_common)
+target_link_libraries(ncs_user_ui PUBLIC
+    Qt6::Widgets
+    Qt6::Network
+    ncs_common
+)
 
 add_executable(ncs_user main.cpp)
 target_link_libraries(ncs_user PRIVATE ncs_user_ui)

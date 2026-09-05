@@ -10,18 +10,24 @@ class QLabel;
 namespace ncs {
 namespace client {
 
-// 个人中心占位页：展示登录用户信息 + 找桩入口。钱包/订单后续 change 再加。
+// 个人中心：头像 + 信息 + 功能入口(充值/昵称/历史/找桩/我的会话/头像)。
 class ProfilePage : public QWidget {
     Q_OBJECT
 public:
     explicit ProfilePage(const ncs::User& user, QWidget* parent = nullptr);
     void setUser(const ncs::User& user);
+    void setAvatarPixmap(const QPixmap& pm);
 
 signals:
     void goFindStations();
     void goSessions();
+    void rechargeRequested();
+    void nicknameRequested();
+    void historyRequested();
+    void avatarRequested();
 
 private:
+    QLabel* avatar_ = nullptr;
     QLabel* nickname_ = nullptr;
     QLabel* phone_ = nullptr;
     QLabel* balance_ = nullptr;

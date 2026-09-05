@@ -142,5 +142,22 @@ void HttpUserService::uploadAvatar(const QString& phone, const QByteArray& bytes
                      });
 }
 
+void HttpUserService::downloadAvatar(const QString& phone, BytesCallback done) {
+    auto* mgr = new QNetworkAccessManager();
+    const QUrl url(baseUrl() + QStringLiteral("/uploads/avatar_") + phone +
+                   QStringLiteral(".png"));
+    QNetworkReply* reply = mgr->get(QNetworkRequest(url));
+    QObject::connect(reply, &QNetworkReply::finished,
+                     [reply, mgr, done = std::move(done)] {
+                         const QByteArray data =
+                             reply->error() == QNetworkReply::NoError
+                                 ? reply->readAll()
+                                 : QByteArray();
+                         done(data);
+                         reply->deleteLater();
+                         mgr->deleteLater();
+                     });
+}
+
 }  // namespace client
 }  // namespace ncs

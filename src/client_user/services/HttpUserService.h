@@ -24,6 +24,7 @@ public:
                      LoginCallback done) override;
     void uploadAvatar(const QString& phone, const QByteArray& bytes,
                       AvatarCallback done) override;
+    void downloadAvatar(const QString& phone, BytesCallback done) override;
 
     const QString& baseUrl() const { return client_.baseUrl(); }
 

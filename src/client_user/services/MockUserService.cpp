@@ -79,9 +79,13 @@ void MockUserService::setNickname(const QString& phone, const QString& nickname,
     done(r);
 }
 
-void MockUserService::uploadAvatar(const QString& phone, const QByteArray&,
+void MockUserService::uploadAvatar(const QString&, const QByteArray&,
                                    AvatarCallback done) {
     done(QString(), QString());
+}
+
+void MockUserService::downloadAvatar(const QString&, BytesCallback done) {
+    done(QByteArray());
 }
 
 void MockUserService::clear() {

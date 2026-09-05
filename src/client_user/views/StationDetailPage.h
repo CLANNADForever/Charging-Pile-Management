@@ -3,6 +3,8 @@
 
 #include <QWidget>
 
+#include "entities.h"
+
 class QListWidget;
 class QPushButton;
 class QLabel;
@@ -19,14 +21,19 @@ public:
     explicit StationDetailPage(IStationService* service, QWidget* parent = nullptr);
 
     void load(int stationId);
+    void setStation(const ncs::Station& st);
 
 signals:
     void backRequested();
+    void navRequested();
     void deviceChosen(int deviceId);
 
 private:
     IStationService* service_ = nullptr;
+    QString stationName_;
+    double stationLat_ = 0, stationLng_ = 0;
     int currentStation_ = 0;
+    class QLabel* info_ = nullptr;
     QListWidget* list_ = nullptr;
     QPushButton* backBtn_ = nullptr;
     QLabel* status_ = nullptr;

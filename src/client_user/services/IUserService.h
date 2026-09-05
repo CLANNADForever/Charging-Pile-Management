@@ -35,6 +35,9 @@ public:
         std::function<void(const QString& error, const QString& url)>;
     virtual void uploadAvatar(const QString& phone, const QByteArray& bytes,
                               AvatarCallback done) = 0;
+    // 下载头像字节(无则空)
+    using BytesCallback = std::function<void(const QByteArray&)>;
+    virtual void downloadAvatar(const QString& phone, BytesCallback done) = 0;
 };
 
 }  // namespace client
