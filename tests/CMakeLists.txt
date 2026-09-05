@@ -13,3 +13,5 @@ add_test(NAME ncs_offscreen COMMAND ncs_tests)
 set_tests_properties(ncs_offscreen PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 add_subdirectory(server)
+
+add_subdirectory(e2e)
