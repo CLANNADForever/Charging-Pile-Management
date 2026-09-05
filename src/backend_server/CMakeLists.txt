@@ -7,6 +7,8 @@ add_library(ncs_server_lib STATIC
     core/HeartbeatSink.h
     core/HeartbeatLogSink.h
     core/HeartbeatLogSink.cpp
+    core/ChargeService.h
+    core/ChargeService.cpp
     database/Store.h
     database/Store.cpp
 )

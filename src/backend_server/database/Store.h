@@ -12,7 +12,8 @@ struct sqlite3;
 namespace ncs {
 namespace backend {
 
-// SQLite 持久层：直接 SQLite C API(serialized) + 互斥锁串行化，可跨线程安全调用。
+// SQLite 持久层：SQLite C API + 互斥锁串行化。单方法原子；
+// 跨方法业务原子(预约/结算)由上层(ChargeService)再包一把锁。
 class Store {
 public:
     Store();
@@ -24,15 +25,26 @@ public:
     bool isOpen() const;
     void close();
 
-    // 用户(免密登录)
+    // 用户
     bool ensureUserByPhone(const QString& phone, ncs::User* out);
     bool findUserByPhone(const QString& phone, ncs::User* out) const;
     bool setBalanceCents(int userId, ncs::MoneyCents cents);
     qint64 countUsers() const;
 
-    // 站点 / 桩列表
+    // 站 / 桩 / 订单
     QVector<ncs::Station> listStations() const;
     QVector<ncs::Device> listDevicesByStation(int stationId) const;
+    bool getStationById(int id, ncs::Station* out) const;
+    bool getDeviceById(int id, ncs::Device* out) const;
+    bool setDeviceState(int deviceId, int state);
+    bool adjustStationFree(int stationId, int delta);
+
+    bool createOrder(const ncs::Order& o, int* newId);
+    bool getOrderById(int id, ncs::Order* out) const;
+    bool updateOrderStatus(int id, int status);
+    bool updateOrderSettled(int id, double energyKwh,
+                            ncs::MoneyCents amountCents);
+    qint64 countOrders() const;
 
 private:
     bool findLocked(const QString& phone, ncs::User* out) const;  // 调用方持锁

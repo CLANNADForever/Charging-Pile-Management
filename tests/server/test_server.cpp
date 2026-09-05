@@ -14,6 +14,7 @@
 #include <QString>
 
 #include "BackendApp.h"
+#include "core/ChargeService.h"
 #include "httplib.h"
 
 namespace {
@@ -180,13 +181,56 @@ int main() {
             sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":2,\"voltage\":219.0,\"current\":0.0,\"temperature\":28.0}\n");
             sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":7,\"voltage\":221.0,\"current\":12.0,\"temperature\":33.0}\n");
             close(fd);
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
         check(app.simHeartbeatCount() >= 3,
               "sim sink received >=3 heartbeats");
         check(app.simLastDeviceId() == 7, "sim sink last device 7");
         app.stopSimListener();
     }
+
+    // 5) 充电最小闭环(ChargeService 直测；注入能量 2.0kWh)
+    const QString chgDb = tempDb("chg");
+    {
+        ncs::backend::Store st;
+        check(st.open(chgDb), "chg store.open");
+        ncs::User u;
+        st.ensureUserByPhone(QStringLiteral("13800138000"), &u);
+        ncs::Device dev;
+        check(st.getDeviceById(1, &dev) && dev.state == ncs::DeviceState::Idle,
+              "chg: device1 idle");
+        ncs::backend::ChargeService cs(&st, [](int, bool) {}, [](int) { return 2.0; });
+        ncs::Order o;
+        QString err;
+        check(cs.reserve(QStringLiteral("13800138000"), 1, &o, &err),
+              "chg: reserve ok");
+        check(o.status == ncs::OrderStatus::Reserved && o.unitPriceCents == 200,
+              "chg: order reserved + price snapshot 200");
+        check(st.getDeviceById(1, &dev) && dev.state == ncs::DeviceState::Reserved,
+              "chg: device Reserved");
+        ncs::Station s1;
+        st.getStationById(1, &s1);
+        check(s1.freePiles == 1, "chg: station1 free ->1");
+        ncs::Order o2;
+        QString err2;
+        check(!cs.reserve(QStringLiteral("13800138000"), 1, &o2, &err2),
+              "chg: double reserve blocked");
+        check(cs.start(o.id, &err), "chg: start ok");
+        check(cs.finish(o.id, &err), "chg: finish ok");
+        ncs::Order done;
+        st.getOrderById(o.id, &done);
+        check(done.status == ncs::OrderStatus::Completed && done.amountCents == 400 &&
+                  done.energyKwh == 2.0,
+              "chg: settled amount 400 (2.0kWh x 200)");
+        ncs::User after;
+        st.findUserByPhone(QStringLiteral("13800138000"), &after);
+        check(after.balanceCents == -400, "chg: balance -400 (欠费)");
+        check(st.getDeviceById(1, &dev) && dev.state == ncs::DeviceState::Idle,
+              "chg: device back Idle");
+        st.getStationById(1, &s1);
+        check(s1.freePiles == 2, "chg: station1 free back 2");
+    }
+    ::unlink(chgDb.toLocal8Bit().constData());
 
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());

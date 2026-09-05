@@ -11,6 +11,7 @@
 
 #include <QDateTime>
 
+#include "core/ChargeService.h"
 #include <nlohmann/json.hpp>
 
 namespace ncs {
@@ -69,10 +70,31 @@ json deviceToJson(const ncs::Device& d) {
                 {"power_kw", d.powerKw},
                 {"energy_kwh", d.energyKwh}};
 }
+json orderToJson(const ncs::Order& o) {
+    auto iso = [](const QDateTime& t) {
+        return t.isValid() ? t.toUTC().toString(Qt::ISODate).toStdString()
+                           : std::string();
+    };
+    return json{{"id", o.id},
+                {"phone", o.phone.toStdString()},
+                {"station_id", o.stationId},
+                {"device_id", o.deviceId},
+                {"unit_price_cents", o.unitPriceCents},
+                {"amount_cents", o.amountCents},
+                {"energy_kwh", o.energyKwh},
+                {"status", static_cast<int>(o.status)},
+                {"started_at", iso(o.startedAt)},
+                {"finished_at", iso(o.finishedAt)}};
+}
 }  // namespace
 
 BackendApp::BackendApp(const QString& dbPath)
-    : dbPath_(dbPath), auth_(&store_) {}
+    : dbPath_(dbPath), auth_(&store_) {
+    charge_ = std::make_unique<ChargeService>(
+        &store_,
+        [this](int deviceId, bool start) { sendSimCommand(deviceId, start); },
+        [this](int deviceId) { return simEnergy(deviceId); });
+}
 
 BackendApp::~BackendApp() {
     stopSimListener();
@@ -148,6 +170,57 @@ void BackendApp::registerRoutes() {
                      arr.push_back(deviceToJson(d));
                  replyOk(res, std::move(arr));
              });
+
+    srv_.Post("/api/orders", [this](const httplib::Request& req,
+                                    httplib::Response& res) {
+        QString phone;
+        int deviceId = 0;
+        try {
+            const auto j = json::parse(req.body);
+            phone = QString::fromStdString(j.at("phone").get<std::string>());
+            deviceId = j.at("device_id").get<int>();
+        } catch (...) {
+            reply(res, kCodeBadReq, "body 需为 JSON 且含 phone/device_id", nullptr);
+            return;
+        }
+        ncs::Order o;
+        QString err;
+        if (charge_->reserve(phone, deviceId, &o, &err))
+            replyOk(res, orderToJson(o));
+        else
+            replyBizErr(res, err);
+    });
+
+    srv_.Post(R"(/api/orders/(\d+)/start)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺订单 id", nullptr);
+                      return;
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  QString err;
+                  if (charge_->start(id, &err))
+                      replyOk(res, nullptr);
+                  else
+                      replyBizErr(res, err);
+              });
+
+    srv_.Post(R"(/api/orders/(\d+)/finish)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺订单 id", nullptr);
+                      return;
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  QString err;
+                  if (!charge_->finish(id, &err)) {
+                      replyBizErr(res, err);
+                      return;
+                  }
+                  ncs::Order o;
+                  store_.getOrderById(id, &o);  // 结算后的订单(含金额/电量)
+                  replyOk(res, orderToJson(o));
+              });
 }
 
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------
@@ -212,7 +285,13 @@ void BackendApp::handleSimConnection(int fd) {
                 continue;
             try {
                 const auto j = json::parse(line);
-                if (j.value("type", "") == "heartbeat") {
+                const std::string type = j.value("type", "");
+                if (type == "register") {
+                    std::vector<int> ids;
+                    for (const auto& v : j.value("devices", json::array()))
+                        ids.push_back(v.get<int>());
+                    registerSimDevices(fd, ids);
+                } else if (type == "heartbeat") {
                     Heartbeat hb;
                     hb.deviceId = j.value("device_id", 0);
                     hb.voltage = j.value("voltage", 0.0);
@@ -221,15 +300,53 @@ void BackendApp::handleSimConnection(int fd) {
                     hb.powerKw = j.value("power_kw", 0.0);
                     hb.energyKwh = j.value("energy_kwh", 0.0);
                     hb.tsMs = j.value("ts", 0LL);
+                    {
+                        std::lock_guard<std::mutex> lk(simMu_);
+                        deviceEnergy_[hb.deviceId] = hb.energyKwh;
+                    }
                     sink_.onHeartbeat(hb);
                 }
             } catch (...) {
-                // 忽略坏行
             }
         }
     }
+    unregisterSimFd(fd);
     ::close(fd);
 }
 
+void BackendApp::registerSimDevices(int fd, const std::vector<int>& ids) {
+    std::lock_guard<std::mutex> lk(simMu_);
+    for (const int id : ids) {
+        deviceFd_[id] = fd;
+        deviceEnergy_[id] = 0.0;
+    }
+}
+
+void BackendApp::unregisterSimFd(int fd) {
+    std::lock_guard<std::mutex> lk(simMu_);
+    for (auto it = deviceFd_.begin(); it != deviceFd_.end();) {
+        if (it->second == fd)
+            it = deviceFd_.erase(it);
+        else
+            ++it;
+    }
+}
+
+bool BackendApp::sendSimCommand(int deviceId, bool start) {
+    std::lock_guard<std::mutex> lk(simMu_);
+    const auto it = deviceFd_.find(deviceId);
+    if (it == deviceFd_.end())
+        return false;
+    const json j{{"cmd", start ? "start" : "stop"}, {"device_id", deviceId}};
+    const std::string line = j.dump() + "\n";
+    const ssize_t n = send(it->second, line.data(), line.size(), MSG_NOSIGNAL);
+    return n >= 0;
+}
+
+double BackendApp::simEnergy(int deviceId) const {
+    std::lock_guard<std::mutex> lk(simMu_);
+    const auto it = deviceEnergy_.find(deviceId);
+    return it == deviceEnergy_.end() ? -1.0 : it->second;
+}
 }  // namespace backend
 }  // namespace ncs

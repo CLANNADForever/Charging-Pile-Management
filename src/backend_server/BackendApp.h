@@ -2,7 +2,11 @@
 #define NCS_BACKEND_BACKENDAPP_H
 
 #include <atomic>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <thread>
+#include <vector>
 
 #include <QString>
 #include <httplib.h>
@@ -14,24 +18,30 @@
 namespace ncs {
 namespace backend {
 
-// 装配层：HTTP(REST) + 模拟器 TCP(JSON-lines 心跳)。不含任何 GUI；
-// 实体沿用 Qt 类型(Qt Core)，DB 用 SQLite C API。
+class ChargeService;
+
+// 装配层：HTTP(REST，含充电闭环) + 模拟器 TCP(JSON-lines 心跳 + 命令下发)。
 class BackendApp {
 public:
     explicit BackendApp(const QString& dbPath);
     ~BackendApp();
 
-    bool init();                       // 打开数据库并注册 HTTP 路由
+    bool init();
     const QString& lastError() const { return error_; }
 
     httplib::Server& server() { return srv_; }
     AuthService& auth() { return auth_; }
 
-    // 模拟器 TCP 监听(独立线程)；协议见 HeartbeatSink.h
     bool startSimListener(int port);
     void stopSimListener();
     long long simHeartbeatCount() const { return sink_.count(); }
     int simLastDeviceId() const { return sink_.lastDeviceId(); }
+
+    // 模拟器命令/遥测(内部供 ChargeService 回调)
+    void registerSimDevices(int fd, const std::vector<int>& ids);
+    void unregisterSimFd(int fd);
+    bool sendSimCommand(int deviceId, bool start);
+    double simEnergy(int deviceId) const;
 
     static constexpr const char* kService = "ncs-backend";
     static constexpr const char* kVersion = "0.1.0";
@@ -46,11 +56,16 @@ private:
     Store store_;
     AuthService auth_;
     HeartbeatLogSink sink_;
+    std::unique_ptr<ChargeService> charge_;
     httplib::Server srv_;
 
     int simListenFd_ = -1;
     std::atomic<bool> simRunning_{false};
     std::thread simThread_;
+
+    mutable std::mutex simMu_;       // 保护 deviceFd_ / deviceEnergy_
+    std::map<int, int> deviceFd_;    // deviceId -> 连接 fd(注册的模拟器)
+    std::map<int, double> deviceEnergy_;  // deviceId -> 最近心跳 energy_kwh
 };
 
 }  // namespace backend

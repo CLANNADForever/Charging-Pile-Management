@@ -42,47 +42,34 @@ bool Store::open(const QString& dbPath) {
     }
     sqlite3_busy_timeout(db_, 3000);
 
-    // users
-    const char* sqlUsers = "CREATE TABLE IF NOT EXISTS users ("
-                           "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                           "  phone TEXT NOT NULL UNIQUE,"
-                           "  nickname TEXT NOT NULL,"
-                           "  balance_cents INTEGER NOT NULL DEFAULT 0,"
-                           "  status INTEGER NOT NULL DEFAULT 0,"
-                           "  registered_at TEXT NOT NULL"
-                           ")";
-    char* err = nullptr;
-    if (sqlite3_exec(db_, sqlUsers, nullptr, nullptr, &err) != SQLITE_OK) {
-        sqlite3_free(err);
-        return false;
-    }
-    // stations
-    const char* sqlStations = "CREATE TABLE IF NOT EXISTS stations ("
-                              "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                              "  name TEXT NOT NULL,"
-                              "  address TEXT NOT NULL,"
-                              "  latitude REAL NOT NULL DEFAULT 0,"
-                              "  longitude REAL NOT NULL DEFAULT 0,"
-                              "  total_piles INTEGER NOT NULL DEFAULT 0,"
-                              "  price_cents INTEGER NOT NULL DEFAULT 0,"
-                              "  free_piles INTEGER NOT NULL DEFAULT 0"
-                              ")";
-    if (sqlite3_exec(db_, sqlStations, nullptr, nullptr, &err) != SQLITE_OK) {
-        sqlite3_free(err);
-        return false;
-    }
-    // devices
-    const char* sqlDevices = "CREATE TABLE IF NOT EXISTS devices ("
-                             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                             "  station_id INTEGER NOT NULL,"
-                             "  type INTEGER NOT NULL DEFAULT 0,"
-                             "  state INTEGER NOT NULL DEFAULT 0,"
-                             "  power_kw REAL NOT NULL DEFAULT 0,"
-                             "  energy_kwh REAL NOT NULL DEFAULT 0"
-                             ")";
-    if (sqlite3_exec(db_, sqlDevices, nullptr, nullptr, &err) != SQLITE_OK) {
-        sqlite3_free(err);
-        return false;
+    const char* kTables[] = {
+        "CREATE TABLE IF NOT EXISTS users ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL UNIQUE,"
+        " nickname TEXT NOT NULL, balance_cents INTEGER NOT NULL DEFAULT 0,"
+        " status INTEGER NOT NULL DEFAULT 0, registered_at TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS stations ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+        " address TEXT NOT NULL, latitude REAL NOT NULL DEFAULT 0,"
+        " longitude REAL NOT NULL DEFAULT 0, total_piles INTEGER NOT NULL DEFAULT 0,"
+        " price_cents INTEGER NOT NULL DEFAULT 0, free_piles INTEGER NOT NULL DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS devices ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, station_id INTEGER NOT NULL,"
+        " type INTEGER NOT NULL DEFAULT 0, state INTEGER NOT NULL DEFAULT 0,"
+        " power_kw REAL NOT NULL DEFAULT 0, energy_kwh REAL NOT NULL DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS orders ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL,"
+        " station_id INTEGER NOT NULL, device_id INTEGER NOT NULL,"
+        " unit_price_cents INTEGER NOT NULL DEFAULT 0,"
+        " amount_cents INTEGER NOT NULL DEFAULT 0,"
+        " energy_kwh REAL NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0,"
+        " started_at TEXT NOT NULL, finished_at TEXT)",
+    };
+    for (const char* sql : kTables) {
+        char* err = nullptr;
+        if (sqlite3_exec(db_, sql, nullptr, nullptr, &err) != SQLITE_OK) {
+            sqlite3_free(err);
+            return false;
+        }
     }
     return seedIfEmptyLocked();
 }
@@ -100,6 +87,41 @@ void Store::close() {
     }
 }
 
+bool Store::seedIfEmptyLocked() {
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM stations", -1, &st,
+                           nullptr) != SQLITE_OK)
+        return false;
+    const bool hasRows = sqlite3_step(st) == SQLITE_ROW &&
+                         sqlite3_column_int64(st, 0) > 0;
+    sqlite3_finalize(st);
+    if (hasRows)
+        return true;
+
+    const char* stations =
+        "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles) VALUES"
+        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2),"
+        " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3),"
+        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2)";
+    char* err = nullptr;
+    if (sqlite3_exec(db_, stations, nullptr, nullptr, &err) != SQLITE_OK) {
+        sqlite3_free(err);
+        return false;
+    }
+    const char* devices =
+        "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES"
+        " (1,0,0,120.0,0.0),(1,0,0,120.0,0.0),(1,0,1,120.0,12.5),"
+        " (2,1,0,7.0,0.0),(2,1,0,7.0,0.0),(2,1,2,0.0,3.2),(2,1,0,7.0,0.0),"
+        " (3,0,0,180.0,0.0),(3,0,0,180.0,0.0)";
+    if (sqlite3_exec(db_, devices, nullptr, nullptr, &err) != SQLITE_OK) {
+        sqlite3_free(err);
+        return false;
+    }
+    return true;
+}
+
+// ---------- helpers / users ----------
+
 bool Store::findLocked(const QString& phone, ncs::User* out) const {
     if (!db_ || !out)
         return false;
@@ -110,7 +132,6 @@ bool Store::findLocked(const QString& phone, ncs::User* out) const {
         return false;
     const QByteArray p = phone.toUtf8();
     sqlite3_bind_text(st, 1, p.constData(), p.size(), SQLITE_TRANSIENT);
-
     bool found = false;
     if (sqlite3_step(st) == SQLITE_ROW) {
         ncs::User u;
@@ -152,24 +173,23 @@ bool Store::findUserByPhone(const QString& phone, ncs::User* out) const {
 bool Store::ensureUserByPhone(const QString& phone, ncs::User* out) {
     if (!out)
         return false;
-    if (findUserByPhone(phone, out))  // 已存在则直接返回(带锁)
+    if (findUserByPhone(phone, out))
         return true;
-
-    std::lock_guard<std::mutex> lk(mu_);  // 锁内复查 + 插入，避免并发同号双插
+    std::lock_guard<std::mutex> lk(mu_);
     if (!db_)
         return false;
     if (!findLocked(phone, out) && !insertUserLocked(phone))
         return false;
-    return findLocked(phone, out);  // 填充 out
+    return findLocked(phone, out);
 }
 
 bool Store::setBalanceCents(int userId, ncs::MoneyCents cents) {
     std::lock_guard<std::mutex> lk(mu_);
     if (!db_)
         return false;
-    const char* sql = "UPDATE users SET balance_cents = ? WHERE id = ?";
     sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+    if (sqlite3_prepare_v2(db_, "UPDATE users SET balance_cents = ? WHERE id = ?",
+                           -1, &st, nullptr) != SQLITE_OK)
         return false;
     sqlite3_bind_int64(st, 1, static_cast<sqlite3_int64>(cents));
     sqlite3_bind_int(st, 2, userId);
@@ -192,39 +212,7 @@ qint64 Store::countUsers() const {
     return n;
 }
 
-bool Store::seedIfEmptyLocked() {
-    // 首次(空库)预置假数据：3 站 / 9 桩；free_piles 与桩状态保持一致。
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM stations", -1, &st,
-                           nullptr) != SQLITE_OK)
-        return false;
-    const bool hasRows = sqlite3_step(st) == SQLITE_ROW &&
-                         sqlite3_column_int64(st, 0) > 0;
-    sqlite3_finalize(st);
-    if (hasRows)
-        return true;
-
-    const char* stations =
-        "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles) VALUES"
-        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2),"
-        " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3),"
-        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2)";
-    char* err = nullptr;
-    if (sqlite3_exec(db_, stations, nullptr, nullptr, &err) != SQLITE_OK) {
-        sqlite3_free(err);
-        return false;
-    }
-    const char* devices =
-        "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES"
-        " (1,0,0,120.0,0.0),(1,0,0,120.0,0.0),(1,0,1,120.0,12.5),"  // 望京 2 空闲+1 充电中
-        " (2,1,0,7.0,0.0),(2,1,0,7.0,0.0),(2,1,2,0.0,3.2),(2,1,0,7.0,0.0),"  // 中关村 3 空闲+1 故障
-        " (3,0,0,180.0,0.0),(3,0,0,180.0,0.0)";  // 亦庄 2 空闲
-    if (sqlite3_exec(db_, devices, nullptr, nullptr, &err) != SQLITE_OK) {
-        sqlite3_free(err);
-        return false;
-    }
-    return true;
-}
+// ---------- 站 / 桩 ----------
 
 QVector<ncs::Station> Store::listStations() const {
     QVector<ncs::Station> out;
@@ -233,8 +221,8 @@ QVector<ncs::Station> Store::listStations() const {
         return out;
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(db_,
-                           "SELECT id,name,address,latitude,longitude,"
-                           "total_piles,price_cents,free_piles FROM stations ORDER BY id",
+                           "SELECT id,name,address,latitude,longitude,total_piles,"
+                           "price_cents,free_piles FROM stations ORDER BY id",
                            -1, &st, nullptr) != SQLITE_OK)
         return out;
     while (sqlite3_step(st) == SQLITE_ROW) {
@@ -277,6 +265,198 @@ QVector<ncs::Device> Store::listDevicesByStation(int stationId) const {
     }
     sqlite3_finalize(st);
     return out;
+}
+
+bool Store::getStationById(int id, ncs::Station* out) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_ || !out)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT id,name,address,latitude,longitude,total_piles,"
+                           "price_cents,free_piles FROM stations WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, id);
+    const bool found = sqlite3_step(st) == SQLITE_ROW;
+    if (found) {
+        out->id = sqlite3_column_int(st, 0);
+        out->name = columnText(st, 1);
+        out->address = columnText(st, 2);
+        out->latitude = sqlite3_column_double(st, 3);
+        out->longitude = sqlite3_column_double(st, 4);
+        out->totalPiles = sqlite3_column_int(st, 5);
+        out->pricePerKwhCents = sqlite3_column_int64(st, 6);
+        out->freePiles = sqlite3_column_int(st, 7);
+    }
+    sqlite3_finalize(st);
+    return found;
+}
+
+bool Store::getDeviceById(int id, ncs::Device* out) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_ || !out)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT id,station_id,type,state,power_kw,energy_kwh "
+                           "FROM devices WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, id);
+    const bool found = sqlite3_step(st) == SQLITE_ROW;
+    if (found) {
+        out->id = sqlite3_column_int(st, 0);
+        out->stationId = sqlite3_column_int(st, 1);
+        out->type = static_cast<ncs::DeviceType>(sqlite3_column_int(st, 2));
+        out->state = static_cast<ncs::DeviceState>(sqlite3_column_int(st, 3));
+        out->powerKw = sqlite3_column_double(st, 4);
+        out->energyKwh = sqlite3_column_double(st, 5);
+    }
+    sqlite3_finalize(st);
+    return found;
+}
+
+bool Store::setDeviceState(int deviceId, int state) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE devices SET state=? WHERE id=?", -1,
+                           &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, state);
+    sqlite3_bind_int(st, 2, deviceId);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE;
+}
+
+bool Store::adjustStationFree(int stationId, int delta) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE stations SET free_piles = free_piles + ? WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, delta);
+    sqlite3_bind_int(st, 2, stationId);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE;
+}
+
+// ---------- 订单 ----------
+
+bool Store::createOrder(const ncs::Order& o, int* newId) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_)
+        return false;
+    const char* sql = "INSERT INTO orders (phone,station_id,device_id,unit_price_cents,"
+                      "amount_cents,energy_kwh,status,started_at,finished_at) "
+                      "VALUES (?,?,?,?,0,0,?,?,NULL)";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    const QByteArray ph = o.phone.toUtf8();
+    const QByteArray iso = o.startedAt.isValid()
+                               ? o.startedAt.toUTC().toString(Qt::ISODate).toUtf8()
+                               : isoNowUtc().toUtf8();
+    sqlite3_bind_text(st, 1, ph.constData(), ph.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 2, o.stationId);
+    sqlite3_bind_int(st, 3, o.deviceId);
+    sqlite3_bind_int64(st, 4, static_cast<sqlite3_int64>(o.unitPriceCents));
+    sqlite3_bind_int(st, 5, static_cast<int>(o.status));
+    sqlite3_bind_text(st, 6, iso.constData(), iso.size(), SQLITE_TRANSIENT);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    if (rc != SQLITE_DONE)
+        return false;
+    if (newId)
+        *newId = static_cast<int>(sqlite3_last_insert_rowid(db_));
+    return true;
+}
+
+bool Store::getOrderById(int id, ncs::Order* out) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_ || !out)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT id,phone,station_id,device_id,unit_price_cents,"
+                           "amount_cents,energy_kwh,status,started_at,finished_at "
+                           "FROM orders WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, id);
+    const bool found = sqlite3_step(st) == SQLITE_ROW;
+    if (found) {
+        out->id = sqlite3_column_int(st, 0);
+        out->phone = columnText(st, 1);
+        out->stationId = sqlite3_column_int(st, 2);
+        out->deviceId = sqlite3_column_int(st, 3);
+        out->unitPriceCents = sqlite3_column_int64(st, 4);
+        out->amountCents = sqlite3_column_int64(st, 5);
+        out->energyKwh = sqlite3_column_double(st, 6);
+        out->status = static_cast<ncs::OrderStatus>(sqlite3_column_int(st, 7));
+        out->startedAt = fromDbIso(columnText(st, 8));
+        const QString f = columnText(st, 9);
+        if (!f.isEmpty())
+            out->finishedAt = fromDbIso(f);
+    }
+    sqlite3_finalize(st);
+    return found;
+}
+
+bool Store::updateOrderStatus(int id, int status) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE orders SET status=? WHERE id=?", -1,
+                           &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, status);
+    sqlite3_bind_int(st, 2, id);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE;
+}
+
+bool Store::updateOrderSettled(int id, double energyKwh,
+                               ncs::MoneyCents amountCents) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "UPDATE orders SET status=2, energy_kwh=?, amount_cents=?, "
+                           "finished_at=? WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_double(st, 1, energyKwh);
+    sqlite3_bind_int64(st, 2, static_cast<sqlite3_int64>(amountCents));
+    const QByteArray iso = isoNowUtc().toUtf8();
+    sqlite3_bind_text(st, 3, iso.constData(), iso.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 4, id);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE;
+}
+
+qint64 Store::countOrders() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!db_)
+        return -1;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM orders", -1, &st, nullptr) != SQLITE_OK)
+        return -1;
+    qint64 n = -1;
+    if (sqlite3_step(st) == SQLITE_ROW)
+        n = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+    return n;
 }
 
 }  // namespace backend

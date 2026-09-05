@@ -30,11 +30,12 @@ struct User {
     QDateTime registeredAt;  // 注册时间
 };
 
-// 充电桩运行状态
+// 充电桩运行状态(数值已落库/线上传输，追加请用新值勿改旧值)
 enum class DeviceState : int {
     Idle = 0,      // 空闲
     Charging = 1,  // 充电中
     Fault = 2,     // 故障
+    Reserved = 3,  // 已被预约占用(占桩)
 };
 
 // 充电桩类型(快充/慢充)
