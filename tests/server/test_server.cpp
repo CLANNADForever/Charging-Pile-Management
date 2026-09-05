@@ -14,6 +14,7 @@
 #include <QString>
 
 #include "BackendApp.h"
+#include <nlohmann/json.hpp>
 #include "core/ChargeService.h"
 #include "httplib.h"
 
@@ -153,6 +154,50 @@ int main() {
                   devices->body.find("\"code\":0") != std::string::npos &&
                   devices->body.find(R"("station_id":1)") != std::string::npos,
               "GET /api/stations/1/devices -> devices");
+
+        // 4 新端点 HTTP 覆盖(充值/昵称/历史/头像)
+        auto rc = cli.Post("/api/wallet/recharge",
+                           "{\"phone\":\"13800138000\",\"amount_cents\":250}",
+                           "application/json");
+        check(rc && rc->body.find("\"code\":0") != std::string::npos &&
+                  rc->body.find("\"balance_cents\":250") != std::string::npos,
+              "http: recharge +250");
+
+        auto pr = cli.Patch("/api/user/profile",
+                            "{\"phone\":\"13800138000\",\"nickname\":\"HTTP阿甘\"}",
+                            "application/json");
+        check(pr && pr->body.find("\"code\":0") != std::string::npos &&
+                  pr->body.find("\"nickname\"") != std::string::npos,
+              "http: nickname PATCH ok");
+
+        auto rb = cli.Post("/api/orders",
+                           "{\"phone\":\"13800138000\",\"device_id\":1}",
+                           "application/json");
+        const bool rOk = rb && rb->body.find("\"code\":0") != std::string::npos;
+        int oid = 0;
+        if (rOk) {  // 简单解析订单 id
+            const auto j = nlohmann::json::parse(rb->body);
+            oid = j["data"]["id"].get<int>();
+        }
+        check(rOk, "http: reserve device1");
+        if (oid > 0) {
+            cli.Post("/api/orders/" + std::to_string(oid) + "/start", "{}",
+                     "application/json");
+            cli.Post("/api/orders/" + std::to_string(oid) + "/finish", "{}",
+                     "application/json");
+            cli.Post("/api/orders/" + std::to_string(oid) + "/pay", "{}",
+                     "application/json");
+        }
+        auto hs = cli.Get("/api/orders/history?phone=13800138000&limit=10&offset=0");
+        check(hs && hs->body.find("\"total\":1") != std::string::npos,
+              "http: history total 1 after paid order");
+
+        static const unsigned char kPng[8] = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
+        auto av = cli.Post("/api/user/avatar?phone=13800138000&ext=png",
+                           std::string(reinterpret_cast<const char*>(kPng), 8), "application/octet-stream");
+        check(av && av->body.find("\"code\":0") != std::string::npos &&
+                  av->body.find("avatar_13800138000.png") != std::string::npos,
+              "http: avatar png upload");
 
         app.server().stop();
         th.join();

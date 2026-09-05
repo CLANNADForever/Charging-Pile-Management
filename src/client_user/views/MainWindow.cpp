@@ -163,13 +163,16 @@ void MainWindow::popPage() {
         return;
     stack_->removeWidget(pushedPage_);
     pushedPage_ = nullptr;
-    if (pushedBack_) {
-        auto cb = std::move(pushedBack_);
-        pushedBack_ = nullptr;
-        cb();
-    } else {
-        stack_->setCurrentIndex(prevIndex_);
-    }
+    auto cb = std::move(pushedBack_);
+    pushedBack_ = nullptr;
+    stack_->setCurrentIndex(prevIndex_);  // 总是回到进入前那页
+    if (cb)
+        cb();  // 回调只做刷新等副作用
+}
+
+void MainWindow::refreshStationDetail() {
+    if (lastStationId_ > 0)
+        detailPage_->load(lastStationId_);
 }
 
 void MainWindow::onRecharge() {

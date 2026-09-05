@@ -94,10 +94,10 @@ void HttpUserService::recharge(const QString& phone, ncs::MoneyCents amountCents
 
 void HttpUserService::setNickname(const QString& phone, const QString& nickname,
                                   LoginCallback done) {
-    client_.post(QStringLiteral("/api/user/profile"),
-                 QJsonObject{{QStringLiteral("phone"), phone},
-                             {QStringLiteral("nickname"), nickname}},
-                 [done = std::move(done)](const HttpJsonClient::Reply& h) {
+    client_.patch(QStringLiteral("/api/user/profile"),
+                  QJsonObject{{QStringLiteral("phone"), phone},
+                              {QStringLiteral("nickname"), nickname}},
+                  [done = std::move(done)](const HttpJsonClient::Reply& h) {
                      LoginResult r;
                      if (!h.transportOk) {
                          r.message = QStringLiteral("网络错误：") + h.error;

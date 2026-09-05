@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
         [&](double myLat, double myLng, double stLat, double stLng,
             const QString& stName) {
             navPage.openRoute(myLat, myLng, stLat, stLng, stName);
-            w.pushPage(&navPage, [&] { /* 回到站内桩 */ });
+            w.pushPage(&navPage, [&] { w.refreshStationDetail(); });
         });
     QObject::connect(&navPage, &ncs::client::NavigationPage::backRequested, &w,
                      [&] { w.popPage(); });

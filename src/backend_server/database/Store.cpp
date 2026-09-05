@@ -603,8 +603,9 @@ bool Store::addBalanceByPhone(const QString& phone, ncs::MoneyCents deltaCents) 
     const QByteArray p = phone.toUtf8();
     sqlite3_bind_text(st, 2, p.constData(), p.size(), SQLITE_TRANSIENT);
     const int rc = sqlite3_step(st);
+    const bool changed = rc == SQLITE_DONE && sqlite3_changes(db_) > 0;
     sqlite3_finalize(st);
-    return rc == SQLITE_DONE;
+    return changed;
 }
 
 bool Store::setNickname(const QString& phone, const QString& nickname) {
@@ -620,8 +621,9 @@ bool Store::setNickname(const QString& phone, const QString& nickname) {
     sqlite3_bind_text(st, 1, n.constData(), n.size(), SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 2, p.constData(), p.size(), SQLITE_TRANSIENT);
     const int rc = sqlite3_step(st);
+    const bool changed = rc == SQLITE_DONE && sqlite3_changes(db_) > 0;
     sqlite3_finalize(st);
-    return rc == SQLITE_DONE;
+    return changed;
 }
 
 QVector<ncs::Order> Store::listHistoryByPhone(const QString& phone, int limit,

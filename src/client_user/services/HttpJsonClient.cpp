@@ -19,8 +19,12 @@ void HttpJsonClient::send(const QByteArray& verb, const QString& path,
                   QStringLiteral("application/json"));
 
     QNetworkReply* reply = nullptr;
-    if (verb == "POST" && json)
-        reply = mgr_.post(req, QJsonDocument(*json).toJson(QJsonDocument::Compact));
+    const QByteArray body =
+        json ? QJsonDocument(*json).toJson(QJsonDocument::Compact) : QByteArray();
+    if (verb == "POST")
+        reply = mgr_.post(req, body);
+    else if (verb == "PATCH")
+        reply = mgr_.sendCustomRequest(req, "PATCH", body);
     else
         reply = mgr_.get(req);
 
@@ -57,6 +61,11 @@ void HttpJsonClient::send(const QByteArray& verb, const QString& path,
 
 void HttpJsonClient::get(const QString& path, ReplyCallback done) {
     send("GET", path, nullptr, std::move(done));
+}
+
+void HttpJsonClient::patch(const QString& path, const QJsonObject& json,
+                           ReplyCallback done) {
+    send("PATCH", path, &json, std::move(done));
 }
 
 void HttpJsonClient::post(const QString& path, const QJsonObject& json,

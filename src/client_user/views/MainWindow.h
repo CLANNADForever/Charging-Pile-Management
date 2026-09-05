@@ -39,6 +39,7 @@ signals:
 public slots:
     void pushPage(QWidget* page, std::function<void()> onBack);
     void popPage();
+    void refreshStationDetail();
 
 private slots:
     void onLoginSucceeded(const ncs::User& user);
