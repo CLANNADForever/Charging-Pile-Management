@@ -6,8 +6,6 @@ add_library(ncs_user_ui STATIC
     services/MockUserService.cpp
     services/HttpUserService.h
     services/HttpUserService.cpp
-    services/HttpJsonClient.h
-    services/HttpJsonClient.cpp
     services/IStationService.h
     services/HttpStationService.h
     services/HttpStationService.cpp
@@ -32,7 +30,7 @@ add_library(ncs_user_ui STATIC
     views/HistoryPage.h
 )
 target_include_directories(ncs_user_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ncs_user_ui PUBLIC Qt6::Widgets Qt6::Network ncs_common)
+target_link_libraries(ncs_user_ui PUBLIC Qt6::Widgets Qt6::Network ncs_common ncs_shared)
 
 # 可执行目标：额外装配导航页(内嵌 WebEngine)，测试不链接 webengine
 find_package(Qt6 REQUIRED COMPONENTS WebEngineWidgets)

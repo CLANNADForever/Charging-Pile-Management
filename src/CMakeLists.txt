@@ -1,5 +1,7 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(common)
+add_subdirectory(shared)
 add_subdirectory(backend_server)
 add_subdirectory(client_user)
+add_subdirectory(client_admin)
 add_subdirectory(simulator)

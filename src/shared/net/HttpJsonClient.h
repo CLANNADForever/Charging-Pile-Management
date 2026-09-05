@@ -33,6 +33,7 @@ public:
               ReplyCallback done);
     void patch(const QString& path, const QJsonObject& json,
                ReplyCallback done);
+    void sendDelete(const QString& path, ReplyCallback done);
 
     const QString& baseUrl() const { return baseUrl_; }
 

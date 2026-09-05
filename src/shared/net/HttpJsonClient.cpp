@@ -25,6 +25,8 @@ void HttpJsonClient::send(const QByteArray& verb, const QString& path,
         reply = mgr_.post(req, body);
     else if (verb == "PATCH")
         reply = mgr_.sendCustomRequest(req, "PATCH", body);
+    else if (verb == "DELETE")
+        reply = mgr_.deleteResource(req);
     else
         reply = mgr_.get(req);
 
@@ -66,6 +68,10 @@ void HttpJsonClient::get(const QString& path, ReplyCallback done) {
 void HttpJsonClient::patch(const QString& path, const QJsonObject& json,
                            ReplyCallback done) {
     send("PATCH", path, &json, std::move(done));
+}
+
+void HttpJsonClient::sendDelete(const QString& path, ReplyCallback done) {
+    send("DELETE", path, nullptr, std::move(done));
 }
 
 void HttpJsonClient::post(const QString& path, const QJsonObject& json,
