@@ -395,6 +395,67 @@ int main() {
                       "b2: audit device.restart entry");
                 close(fd);
             }
+            // 回归(隐形故障)：业务进行中(Reserved)被忽略的故障，桩回到 Idle 后必须"显现"
+            {
+                const int fd8 = socket(AF_INET, SOCK_STREAM, 0);
+                bool okC = false;
+                if (fd8 >= 0) {
+                    sockaddr_in a{};
+                    a.sin_family = AF_INET;
+                    a.sin_port = htons(static_cast<uint16_t>(simPort2));
+                    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+                    okC = connect(fd8, reinterpret_cast<sockaddr*>(&a), sizeof(a)) == 0;
+                }
+                check(okC, "b2: hidden-fault sim connect");
+                if (okC) {
+                    sendLine(fd8, "{\"type\":\"register\",\"devices\":[8]}\n");
+                    sendLine(fd8, "{\"type\":\"heartbeat\",\"device_id\":8,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":0}\n");
+                    auto rv = cli.Post("/api/orders",
+                                       "{\"phone\":\"13800138000\",\"device_id\":8}",
+                                       "application/json");
+                    int oid8 = 0;
+                    { const auto j = nlohmann::json::parse(rv->body);
+                      if (rv && rv->body.find("\"code\":0") != std::string::npos)
+                          oid8 = j["data"]["id"].get<int>(); }
+                    check(oid8 > 0, "b2: reserve dev8 (hidden-fault regression)");
+                    if (oid8 > 0) {
+                        // Reserved 期间设备上报故障 → 业务忽略(不落 Fault)
+                        sendLine(fd8, "{\"type\":\"heartbeat\",\"device_id\":8,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":2}\n");
+                        int s8 = -1;
+                        for (int k = 0; k < 10 && s8 != 3; ++k) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                            auto q = getAuth("/api/admin/devices?q=8");
+                            if (q) { const auto j = nlohmann::json::parse(q->body);
+                                     if (!j["data"]["items"].empty()) s8 = j["data"]["items"][0]["state"].get<int>(); }
+                        }
+                        check(s8 == 3, "b2: fault ignored while Reserved");
+                        cli.Post("/api/orders/" + std::to_string(oid8) + "/cancel",
+                                 "{}", "application/json");
+                        int sIdle = -1;
+                        for (int k = 0; k < 10 && sIdle != 0; ++k) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                            auto q = getAuth("/api/admin/devices?q=8");
+                            if (q) { const auto j = nlohmann::json::parse(q->body);
+                                     if (!j["data"]["items"].empty()) sIdle = j["data"]["items"][0]["state"].get<int>(); }
+                        }
+                        check(sIdle == 0, "b2: dev8 back Idle after cancel");
+                        // 同一故障持续上报，桩回 Idle 后必须"显现"为 Fault(不能被去重缓存吞掉)
+                        sendLine(fd8, "{\"type\":\"heartbeat\",\"device_id\":8,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":2}\n");
+                        int sF = -1;
+                        for (int k = 0; k < 10 && sF != 2; ++k) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                            auto q = getAuth("/api/admin/devices?q=8");
+                            if (q) { const auto j = nlohmann::json::parse(q->body);
+                                     if (!j["data"]["items"].empty()) sF = j["data"]["items"][0]["state"].get<int>(); }
+                        }
+                        check(sF == 2, "b2: hidden fault appears after release (regression)");
+                        // 恢复干净：远程重启 + 设备自愈
+                        postAuth("/api/admin/devices/8/restart", "{}");
+                        sendLine(fd8, "{\"type\":\"heartbeat\",\"device_id\":8,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":0}\n");
+                    }
+                    close(fd8);
+                }
+            }
             app.stopSimListener();
         }
         app.server().stop();
