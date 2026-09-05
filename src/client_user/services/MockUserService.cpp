@@ -1,5 +1,7 @@
 #include "MockUserService.h"
 
+#include <QMutexLocker>
+
 #include "phone.h"
 
 namespace ncs {
@@ -26,6 +28,8 @@ LoginResult MockUserService::login(const QString& phone, const QString& code) {
         r.message = QStringLiteral("验证码错误");
         return r;
     }
+
+    QMutexLocker locker(&mutex_);
     User& u = users_[phone];  // 不存在则自动注册新用户
     if (u.phone.isEmpty()) {
         u.phone = phone;
@@ -36,6 +40,11 @@ LoginResult MockUserService::login(const QString& phone, const QString& code) {
     r.message = QStringLiteral("登录成功");
     r.user = u;
     return r;
+}
+
+void MockUserService::clear() {
+    QMutexLocker locker(&mutex_);
+    users_.clear();
 }
 
 }  // namespace client

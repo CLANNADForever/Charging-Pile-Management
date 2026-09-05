@@ -1,7 +1,9 @@
-// NCS 后端集成测试：临时 SQLite 库 + 内存? 真实库；起服务打 HTTP。
+// NCS 后端集成测试：临时 SQLite + Store/AuthService + 并发 + 真实 HTTP。
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <thread>
+#include <vector>
 #include <chrono>
 #include <unistd.h>
 
@@ -23,10 +25,13 @@ void check(bool ok, const char* name) {
 QString tempDb(const char* tag) {
     return QStringLiteral("/tmp/ncs_ut_%1_%2.db").arg(tag).arg(::getpid());
 }
+QString phoneFor(int i) {  // 唯一合法 11 位号
+    return QStringLiteral("139") + QString::number(10000000 + i);
+}
 }  // namespace
 
 int main() {
-    // ---- 1) Store 直测(独立实例 + 独立连接名) ----
+    // ---- 1) Store 直测 ----
     const QString storeDb = tempDb("store");
     {
         ncs::backend::Store st;
@@ -48,10 +53,49 @@ int main() {
               "findUserByPhone reflects new balance");
     }
 
-    // ---- 2) HTTP 服务端到端 ----
+    // ---- 2) 并发：多线程自动注册不同号 + 同号并发不崩/不重复 ----
+    const QString concDb = tempDb("conc");
+    {
+        ncs::backend::Store st;
+        check(st.open(concDb), "conc store.open");
+        {
+            std::atomic<int> ok{0};
+            std::vector<std::thread> ts;
+            for (int i = 0; i < 8; ++i) {
+                ts.emplace_back([&, i] {
+                    ncs::User u;
+                    if (st.ensureUserByPhone(phoneFor(i), &u))
+                        ++ok;
+                });
+            }
+            for (auto& t : ts)
+                t.join();
+            check(ok == 8 && st.countUsers() == 8,
+                  "8 threads auto-register distinct phones (no crash/loss)");
+        }
+        {
+            // 同号并发：只会注册 1 条
+            std::atomic<int> ok{0};
+            std::vector<std::thread> ts;
+            for (int i = 0; i < 8; ++i) {
+                ts.emplace_back([&] {
+                    ncs::User u;
+                    if (st.ensureUserByPhone(QStringLiteral("13912345678"), &u))
+                        ++ok;
+                });
+            }
+            for (auto& t : ts)
+                t.join();
+            check(ok == 8 && st.countUsers() == 9,
+                  "same phone concurrent -> all ok, no duplicate (count 9)");
+        }
+    }
+
+    // ---- 3) HTTP 服务端到端 ----
     const QString appDb = tempDb("app");
-    ncs::backend::BackendApp app(appDb);
-    check(app.init(), "BackendApp.init()");
+    {
+        ncs::backend::BackendApp app(appDb);
+        check(app.init(), "BackendApp.init()");
         const int port = app.server().bind_to_any_port("127.0.0.1");
         std::thread th([&] { app.server().listen_after_bind(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -91,7 +135,10 @@ int main() {
 
         app.server().stop();
         th.join();
+    }
+
     ::unlink(storeDb.toLocal8Bit().constData());
+    ::unlink(concDb.toLocal8Bit().constData());
     ::unlink(appDb.toLocal8Bit().constData());
 
     if (g_fail == 0) {

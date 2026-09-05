@@ -1,8 +1,5 @@
-# 后端 HTTP 服务。说明：本服务不含 GUI，仅依赖 Qt Core/Sql
-# (实体与持久层复用了 Qt 类型)；HTTP/JSON 用 vendored 的 cpp-httplib + nlohmann。
-find_package(Qt6 REQUIRED COMPONENTS Sql)
-
-# 核心 + HTTP 装配层做成库，供 ncs_server(main) 与后端测试共用
+# 后端 HTTP 服务。不含 GUI；实体沿用 Qt 类型(链 Qt Core)，DB 用系统 SQLite C API，
+# HTTP/JSON 用 vendored 的 cpp-httplib + nlohmann。
 add_library(ncs_server_lib STATIC
     BackendApp.h
     BackendApp.cpp
@@ -17,9 +14,9 @@ target_include_directories(ncs_server_lib PUBLIC
 )
 target_link_libraries(ncs_server_lib PUBLIC
     Qt6::Core
-    Qt6::Sql
     ncs_common
     Threads::Threads
+    sqlite3
 )
 
 add_executable(ncs_server main.cpp)
