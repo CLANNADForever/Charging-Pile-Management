@@ -30,6 +30,26 @@ void replyJson(httplib::Response& res, const json& j, int status = 200) {
     res.set_content(j.dump(), "application/json; charset=utf-8");
 }
 
+json stationToJson(const ncs::Station& s) {
+    return json{{"id", s.id},
+                {"name", s.name.toStdString()},
+                {"address", s.address.toStdString()},
+                {"latitude", s.latitude},
+                {"longitude", s.longitude},
+                {"total_piles", s.totalPiles},
+                {"price_cents", s.pricePerKwhCents},
+                {"free_piles", s.freePiles}};
+}
+
+json deviceToJson(const ncs::Device& d) {
+    return json{{"id", d.id},
+                {"station_id", d.stationId},
+                {"type", static_cast<int>(d.type)},
+                {"state", static_cast<int>(d.state)},
+                {"power_kw", d.powerKw},
+                {"energy_kwh", d.energyKwh}};
+}
+
 }  // namespace
 
 BackendApp::BackendApp(const QString& dbPath)
@@ -88,6 +108,28 @@ void BackendApp::registerRoutes() {
             j["user"] = userToJson(r.user);
         replyJson(res, j);
     });
+
+    srv_.Get("/api/stations", [this](const httplib::Request&, httplib::Response& res) {
+        const auto stations = store_.listStations();
+        json arr = json::array();
+        for (const auto& st : stations)
+            arr.push_back(stationToJson(st));
+        replyJson(res, arr);
+    });
+
+    srv_.Get(R"(/api/stations/(\d+)/devices)",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 if (req.matches.size() < 2) {
+                     replyJson(res, json::array(), 400);
+                     return;
+                 }
+                 const int id = std::stoi(req.matches[1]);
+                 const auto devices = store_.listDevicesByStation(id);
+                 json arr = json::array();
+                 for (const auto& d : devices)
+                     arr.push_back(deviceToJson(d));
+                 replyJson(res, arr);
+             });
 }
 
 }  // namespace backend

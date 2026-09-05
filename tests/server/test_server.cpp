@@ -133,6 +133,22 @@ int main() {
         check(loginBad && loginBad->body.find("\"ok\":false") != std::string::npos,
               "login wrong code -> ok=false");
 
+        auto stations = cli.Get("/api/stations");
+        check(stations && stations->status == 200 &&
+                  stations->body.find(R"("name":"望京充电站")") != std::string::npos &&
+                  stations->body.find(R"("name":"亦庄超充站")") != std::string::npos,
+              "GET /api/stations -> seeded stations present");
+
+        auto devices = cli.Get("/api/stations/1/devices");
+        check(devices && devices->status == 200 &&
+                  devices->body.find(R"("station_id":1)") != std::string::npos,
+              "GET /api/stations/1/devices -> devices present");
+
+        auto devicesNone = cli.Get("/api/stations/9999/devices");
+        check(devicesNone && devicesNone->status == 200 &&
+                  devicesNone->body == "[]",
+              "GET unknown station devices -> empty array");
+
         app.server().stop();
         th.join();
     }
