@@ -1,10 +1,12 @@
-# 后端 HTTP 服务。不含 GUI；实体沿用 Qt 类型(链 Qt Core)，DB 用系统 SQLite C API，
-# HTTP/JSON 用 vendored 的 cpp-httplib + nlohmann。
+# 后端 HTTP + 模拟器 TCP。不含 GUI；实体 Qt 类型(Qt Core)；DB=SQLite C API。
 add_library(ncs_server_lib STATIC
     BackendApp.h
     BackendApp.cpp
     core/AuthService.h
     core/AuthService.cpp
+    core/HeartbeatSink.h
+    core/HeartbeatLogSink.h
+    core/HeartbeatLogSink.cpp
     database/Store.h
     database/Store.cpp
 )

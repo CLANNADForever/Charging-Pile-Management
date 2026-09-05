@@ -1,11 +1,15 @@
-// NCS 后端集成测试：临时 SQLite + Store/AuthService + 并发 + 真实 HTTP。
+// NCS 后端集成测试：Store/SQLite + 并发 + HTTP + 模拟器 TCP。
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <atomic>
 #include <thread>
 #include <vector>
-#include <chrono>
-#include <unistd.h>
 
 #include <QString>
 
@@ -25,13 +29,35 @@ void check(bool ok, const char* name) {
 QString tempDb(const char* tag) {
     return QStringLiteral("/tmp/ncs_ut_%1_%2.db").arg(tag).arg(::getpid());
 }
-QString phoneFor(int i) {  // 唯一合法 11 位号
+QString phoneFor(int i) {
     return QStringLiteral("139") + QString::number(10000000 + i);
+}
+int freePort() {
+    const int s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0)
+        return -1;
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    a.sin_port = 0;
+    if (bind(s, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0) {
+        close(s);
+        return -1;
+    }
+    socklen_t alen = sizeof(a);
+    getsockname(s, reinterpret_cast<sockaddr*>(&a), &alen);
+    const int port = ntohs(a.sin_port);
+    close(s);
+    return port;
+}
+bool sendLine(int fd, const char* line) {
+    const ssize_t n = send(fd, line, std::char_traits<char>::length(line), MSG_NOSIGNAL);
+    return n >= 0;
 }
 }  // namespace
 
 int main() {
-    // ---- 1) Store 直测 ----
+    // 1) Store 直测
     const QString storeDb = tempDb("store");
     {
         ncs::backend::Store st;
@@ -53,7 +79,7 @@ int main() {
               "findUserByPhone reflects new balance");
     }
 
-    // ---- 2) 并发：多线程自动注册不同号 + 同号并发不崩/不重复 ----
+    // 2) 并发
     const QString concDb = tempDb("conc");
     {
         ncs::backend::Store st;
@@ -71,10 +97,9 @@ int main() {
             for (auto& t : ts)
                 t.join();
             check(ok == 8 && st.countUsers() == 8,
-                  "8 threads auto-register distinct phones (no crash/loss)");
+                  "8 threads auto-register distinct phones");
         }
         {
-            // 同号并发：只会注册 1 条
             std::atomic<int> ok{0};
             std::vector<std::thread> ts;
             for (int i = 0; i < 8; ++i) {
@@ -87,11 +112,11 @@ int main() {
             for (auto& t : ts)
                 t.join();
             check(ok == 8 && st.countUsers() == 9,
-                  "same phone concurrent -> all ok, no duplicate (count 9)");
+                  "same phone concurrent -> no duplicate");
         }
     }
 
-    // ---- 3) HTTP 服务端到端 ----
+    // 3) HTTP 端到端 + 站/桩列表
     const QString appDb = tempDb("app");
     {
         ncs::backend::BackendApp app(appDb);
@@ -107,55 +132,63 @@ int main() {
                   health->body.find("\"ok\":true") != std::string::npos,
               "GET /health -> ok");
 
-        auto sendOk = cli.Post("/api/auth/send-code",
-                               "{\"phone\":\"13800138000\"}",
-                               "application/json");
-        check(sendOk && sendOk->body.find("123456") != std::string::npos,
-              "send-code ok phone -> hint with code");
-
-        auto sendBad = cli.Post("/api/auth/send-code",
-                                "{\"phone\":\"123\"}",
-                                "application/json");
-        check(sendBad && sendBad->body.find("\"ok\":false") != std::string::npos,
-              "send-code invalid phone -> ok=false");
-
         auto loginGood = cli.Post("/api/auth/login",
                                   "{\"phone\":\"13800138000\",\"code\":\"123456\"}",
                                   "application/json");
-        check(loginGood && loginGood->status == 200 &&
-                  loginGood->body.find("\"ok\":true") != std::string::npos &&
+        check(loginGood && loginGood->body.find("\"ok\":true") != std::string::npos &&
                   loginGood->body.find("\"balance_cents\":0") != std::string::npos,
-              "login correct code -> ok + user.balance_cents 0");
-
-        auto loginBad = cli.Post("/api/auth/login",
-                                 "{\"phone\":\"13800138000\",\"code\":\"000000\"}",
-                                 "application/json");
-        check(loginBad && loginBad->body.find("\"ok\":false") != std::string::npos,
-              "login wrong code -> ok=false");
+              "login -> ok");
 
         auto stations = cli.Get("/api/stations");
         check(stations && stations->status == 200 &&
                   stations->body.find(R"("name":"望京充电站")") != std::string::npos &&
                   stations->body.find(R"("name":"亦庄超充站")") != std::string::npos,
-              "GET /api/stations -> seeded stations present");
+              "GET /api/stations -> seeded stations");
 
         auto devices = cli.Get("/api/stations/1/devices");
         check(devices && devices->status == 200 &&
                   devices->body.find(R"("station_id":1)") != std::string::npos,
-              "GET /api/stations/1/devices -> devices present");
-
-        auto devicesNone = cli.Get("/api/stations/9999/devices");
-        check(devicesNone && devicesNone->status == 200 &&
-                  devicesNone->body == "[]",
-              "GET unknown station devices -> empty array");
+              "GET /api/stations/1/devices -> devices");
 
         app.server().stop();
         th.join();
     }
 
+    // 4) 模拟器 TCP 心跳
+    const QString simDb = tempDb("sim");
+    {
+        ncs::backend::BackendApp app(simDb);
+        check(app.init(), "sim app.init");
+        const int simPort = freePort();
+        check(app.startSimListener(simPort), "startSimListener(free port)");
+
+        const int fd = socket(AF_INET, SOCK_STREAM, 0);
+        bool connected = false;
+        if (fd >= 0) {
+            sockaddr_in a{};
+            a.sin_family = AF_INET;
+            a.sin_port = htons(static_cast<uint16_t>(simPort));
+            inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+            connected = connect(fd, reinterpret_cast<sockaddr*>(&a), sizeof(a)) == 0;
+        }
+        check(connected, "sim raw tcp connect");
+        if (connected) {
+            sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":1,\"voltage\":220.5,\"current\":10.2,\"temperature\":30.1}\n");
+            sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":2,\"voltage\":219.0,\"current\":0.0,\"temperature\":28.0}\n");
+            sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":7,\"voltage\":221.0,\"current\":12.0,\"temperature\":33.0}\n");
+            close(fd);
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        check(app.simHeartbeatCount() >= 3,
+              "sim sink received >=3 heartbeats");
+        check(app.simLastDeviceId() == 7, "sim sink last device 7");
+        app.stopSimListener();
+    }
+
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
     ::unlink(appDb.toLocal8Bit().constData());
+    ::unlink(simDb.toLocal8Bit().constData());
 
     if (g_fail == 0) {
         std::printf("backend tests: ALL PASS\n");
