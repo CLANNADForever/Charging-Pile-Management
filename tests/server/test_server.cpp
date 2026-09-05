@@ -281,6 +281,35 @@ int main() {
     }
     ::unlink(cnlDb.toLocal8Bit().constData());
 
+    // 7) 钱包/昵称/历史
+    const QString walDb = tempDb("wal");
+    {
+        ncs::backend::Store st;
+        check(st.open(walDb), "wal store.open");
+        st.ensureUserByPhone(QStringLiteral("13800138000"), nullptr);
+        check(st.addBalanceByPhone(QStringLiteral("13800138000"), 500), "wal recharge +500");
+        ncs::User u;
+        st.findUserByPhone(QStringLiteral("13800138000"), &u);
+        check(u.balanceCents == 500, "wal balance 500");
+        check(st.setNickname(QStringLiteral("13800138000"), QStringLiteral("阿甘")), "wal setNickname");
+        st.findUserByPhone(QStringLiteral("13800138000"), &u);
+        check(u.nickname == QStringLiteral("阿甘"), "wal nickname persisted");
+        // 建一笔已支付订单 → 历史
+        ncs::backend::ChargeService cs(&st, [](int, bool) {}, [](int) { return 1.0; });
+        ncs::Order o;
+        QString err;
+        cs.reserve(QStringLiteral("13800138000"), 1, &o, &err);
+        cs.start(o.id, &err);
+        cs.finish(o.id, &err);
+        cs.pay(o.id, &err);
+        check(st.countHistoryByPhone(QStringLiteral("13800138000")) == 1, "wal history count 1");
+        const auto hist = st.listHistoryByPhone(QStringLiteral("13800138000"), 20, 0);
+        check(hist.size() == 1 && hist[0].status == ncs::OrderStatus::Paid &&
+                  hist[0].amountCents == 200,
+              "wal history paid amount 200");
+    }
+    ::unlink(walDb.toLocal8Bit().constData());
+
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
     ::unlink(appDb.toLocal8Bit().constData());

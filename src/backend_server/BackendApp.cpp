@@ -7,9 +7,12 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
+#include <QDir>
+#include <QFile>
 #include <QDateTime>
 
 #include "billing.h"
@@ -108,6 +111,10 @@ bool BackendApp::init() {
         error_ = QStringLiteral("打开数据库失败: ") + dbPath_;
         return false;
     }
+    const QString uploads = QDir::current().absoluteFilePath(QStringLiteral("uploads"));
+    QDir().mkpath(uploads);
+    srv_.set_mount_point("/uploads", uploads.toStdString());
+
     registerRoutes();
     return true;
 }
@@ -293,6 +300,111 @@ void BackendApp::registerRoutes() {
                      arr.push_back(orderToJson(o));
                  replyOk(res, std::move(arr));
              });
+
+    // 模拟充值: balance += amount_cents
+    srv_.Post("/api/wallet/recharge",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  QString phone;
+                  ncs::MoneyCents amount = 0;
+                  try {
+                      const auto j = json::parse(req.body);
+                      phone = QString::fromStdString(j.at("phone").get<std::string>());
+                      amount = j.at("amount_cents").get<ncs::MoneyCents>();
+                  } catch (...) {
+                      reply(res, kCodeBadReq, "body 需 phone/amount_cents", nullptr);
+                      return;
+                  }
+                  if (amount <= 0) {
+                      replyBizErr(res, QStringLiteral("充值金额需为正数"));
+                      return;
+                  }
+                  ncs::User u;
+                  if (!store_.findUserByPhone(phone, &u)) {
+                      replyBizErr(res, QStringLiteral("用户未注册"));
+                      return;
+                  }
+                  if (!store_.addBalanceByPhone(phone, amount)) {
+                      replyBizErr(res, QStringLiteral("充值失败"));
+                      return;
+                  }
+                  store_.findUserByPhone(phone, &u);
+                  replyOk(res, userToJson(u));
+              });
+
+    // 改昵称
+    srv_.Patch("/api/user/profile",
+               [this](const httplib::Request& req, httplib::Response& res) {
+                   QString phone, nickname;
+                   try {
+                       const auto j = json::parse(req.body);
+                       phone = QString::fromStdString(j.at("phone").get<std::string>());
+                       nickname = QString::fromStdString(j.at("nickname").get<std::string>());
+                   } catch (...) {
+                       reply(res, kCodeBadReq, "body 需 phone/nickname", nullptr);
+                       return;
+                   }
+                   if (nickname.trimmed().isEmpty()) {
+                       replyBizErr(res, QStringLiteral("昵称不能为空"));
+                       return;
+                   }
+                   ncs::User u;
+                   if (!store_.findUserByPhone(phone, &u)) {
+                       replyBizErr(res, QStringLiteral("用户未注册"));
+                       return;
+                   }
+                   if (!store_.setNickname(phone, nickname.trimmed())) {
+                       replyBizErr(res, QStringLiteral("保存失败"));
+                       return;
+                   }
+                   store_.findUserByPhone(phone, &u);
+                   replyOk(res, userToJson(u));
+               });
+
+    // 历史订单(已支付, 可翻页)
+    srv_.Get("/api/orders/history",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 const QString phone =
+                     QString::fromStdString(req.get_param_value("phone"));
+                 const int limit = std::atoi(req.get_param_value("limit").c_str());
+                 const int offset = std::atoi(req.get_param_value("offset").c_str());
+                 const int l = limit > 0 ? limit : 20;
+                 const int o = offset > 0 ? offset : 0;
+                 const auto items = store_.listHistoryByPhone(phone, l, o);
+                 const qint64 total = store_.countHistoryByPhone(phone);
+                 json arr = json::array();
+                 for (const auto& x : items)
+                     arr.push_back(orderToJson(x));
+                 replyOk(res, json{{"items", std::move(arr)}, {"total", total}});
+             });
+
+    // 头像上传: POST /api/user/avatar?phone=xxx&ext=png, body=图片字节
+    srv_.Post("/api/user/avatar",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  QString phone = QString::fromStdString(req.get_param_value("phone"));
+                  // 只允许 11 位数字
+                  for (const QChar c : phone) {
+                      if (!c.isDigit()) {
+                          replyBizErr(res, QStringLiteral("phone 需为数字"));
+                          return;
+                      }
+                  }
+                  QString ext = QString::fromStdString(req.get_param_value("ext"));
+                  if (ext.isEmpty())
+                      ext = QStringLiteral("png");
+                  const QString base =
+                      QStringLiteral("avatar_%1.%2").arg(phone, ext);
+                  const QString dir =
+                      QDir::current().absoluteFilePath(QStringLiteral("uploads"));
+                  QFile out(dir + QLatin1Char('/') + base);
+                  if (!out.open(QIODevice::WriteOnly)) {
+                      replyBizErr(res, QStringLiteral("保存失败"));
+                      return;
+                  }
+                  out.write(req.body.data(), static_cast<qint64>(req.body.size()));
+                  out.close();
+                  replyOk(res,
+                          json{{"url", (QStringLiteral("/uploads/") + base).toStdString()}});
+              });
 }
 
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------

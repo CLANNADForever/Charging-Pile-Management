@@ -56,6 +56,12 @@ public:
     qint64 countOrders() const;
     QVector<int> listExpiredReservedOrderIds(int olderThanSec) const;
 
+    // 钱包/资料/历史
+    bool addBalanceByPhone(const QString& phone, ncs::MoneyCents deltaCents);
+    bool setNickname(const QString& phone, const QString& nickname);
+    QVector<ncs::Order> listHistoryByPhone(const QString& phone, int limit,
+                                           int offset) const;
+    qint64 countHistoryByPhone(const QString& phone) const;
 private:
     bool findLocked(const QString& phone, ncs::User* out) const;  // 调用方持锁
     bool insertUserLocked(const QString& phone);                  // 调用方持锁
