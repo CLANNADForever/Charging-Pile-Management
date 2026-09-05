@@ -232,6 +232,38 @@ int main() {
     }
     ::unlink(chgDb.toLocal8Bit().constData());
 
+    // 6) 预约取消 + 超时清扫
+    const QString cnlDb = tempDb("cnl");
+    {
+        ncs::backend::Store st;
+        check(st.open(cnlDb), "cnl store.open");
+        ncs::User u;
+        st.ensureUserByPhone(QStringLiteral("13800138000"), &u);
+        ncs::backend::ChargeService cs(&st, [](int, bool) {}, [](int) { return 0.0; });
+        ncs::Order o;
+        QString err;
+        check(cs.reserve(QStringLiteral("13800138000"), 2, &o, &err), "cnl: reserve dev2");
+        ncs::Device dev;
+        st.getDeviceById(2, &dev);
+        check(dev.state == ncs::DeviceState::Reserved, "cnl: dev2 Reserved");
+        check(cs.cancel(o.id, &err), "cnl: cancel ok");
+        st.getDeviceById(2, &dev);
+        ncs::Station s1;
+        st.getStationById(1, &s1);
+        check(dev.state == ncs::DeviceState::Idle && s1.freePiles == 2,
+              "cnl: cancel releases dev2 + free 2");
+        check(cs.reserve(QStringLiteral("13800138000"), 2, &o, &err), "cnl: reserve again");
+        const int swept = cs.sweepExpiredReservations(-1);  // cutoff=now+1s，保证刚建的预约过期
+        st.getDeviceById(2, &dev);
+        st.getStationById(1, &s1);
+        ncs::Order done;
+        st.getOrderById(o.id, &done);
+        check(swept == 1 && dev.state == ncs::DeviceState::Idle &&
+                  s1.freePiles == 2 && done.status == ncs::OrderStatus::Canceled,
+              "cnl: sweep(0) auto-cancels + releases");
+    }
+    ::unlink(cnlDb.toLocal8Bit().constData());
+
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
     ::unlink(appDb.toLocal8Bit().constData());

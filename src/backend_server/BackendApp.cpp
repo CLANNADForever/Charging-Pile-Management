@@ -5,12 +5,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
 
 #include <QDateTime>
 
+#include "billing.h"
 #include "core/ChargeService.h"
 #include <nlohmann/json.hpp>
 
@@ -97,6 +99,7 @@ BackendApp::BackendApp(const QString& dbPath)
 }
 
 BackendApp::~BackendApp() {
+    stopReserveSweeper();
     stopSimListener();
 }
 
@@ -221,6 +224,41 @@ void BackendApp::registerRoutes() {
                   store_.getOrderById(id, &o);  // 结算后的订单(含金额/电量)
                   replyOk(res, orderToJson(o));
               });
+
+    srv_.Post(R"(/api/orders/(\d+)/cancel)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺订单 id", nullptr);
+                      return;
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  QString err;
+                  if (charge_->cancel(id, &err))
+                      replyOk(res, nullptr);
+                  else
+                      replyBizErr(res, err);
+              });
+
+    // 充电中实时信息(供 C 端轮询)：能量取模拟器最近上报，金额为估算
+    srv_.Get(R"(/api/orders/(\d+)/live)",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 if (req.matches.size() < 2) {
+                     reply(res, kCodeBadReq, "缺订单 id", nullptr);
+                     return;
+                 }
+                 const int id = std::stoi(req.matches[1]);
+                 ncs::Order o;
+                 if (!store_.getOrderById(id, &o)) {
+                     replyBizErr(res, QStringLiteral("订单不存在"));
+                     return;
+                 }
+                 double energy = simEnergy(o.deviceId);
+                 if (energy < 0.0)
+                     energy = 0.0;
+                 replyOk(res, json{{"status", static_cast<int>(o.status)},
+                                   {"energy_kwh", energy},
+                                   {"amount_cents", ncs::charging_amount_cents(energy, o.unitPriceCents)}});
+             });
 }
 
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------
@@ -348,5 +386,30 @@ double BackendApp::simEnergy(int deviceId) const {
     const auto it = deviceEnergy_.find(deviceId);
     return it == deviceEnergy_.end() ? -1.0 : it->second;
 }
+bool BackendApp::startReserveSweeper(int timeoutSec) {
+    if (!charge_ || sweepRunning_.load())
+        return false;
+    sweepRunning_.store(true);
+    sweepThread_ = std::thread([this, timeoutSec] {
+        const int stepMs = std::max(1000, std::min(30000, timeoutSec * 1000 / 2));
+        while (sweepRunning_.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(stepMs));
+            if (!sweepRunning_.load())
+                break;
+            const int n = charge_->sweepExpiredReservations(timeoutSec);
+            if (n > 0)
+                std::printf("[sweep] released %d expired reservation(s)", n);
+                std::putchar(10);
+        }
+    });
+    return true;
+}
+
+void BackendApp::stopReserveSweeper() {
+    sweepRunning_.store(false);
+    if (sweepThread_.joinable())
+        sweepThread_.join();
+}
+
 }  // namespace backend
 }  // namespace ncs

@@ -12,10 +12,13 @@ int main(int argc, char* argv[]) {
                                 : QStringLiteral("ncs-backend.db");
     int httpPort = 8080;
     int simPort = 18000;
+    int reserveTimeoutSec = 300;  // 预约超时释放(秒)
     if (argc > 2)
         httpPort = std::atoi(argv[2]);
     if (argc > 3)
         simPort = std::atoi(argv[3]);
+    if (argc > 4)
+        reserveTimeoutSec = std::atoi(argv[4]);
 
     ncs::backend::BackendApp app(db);
     if (!app.init()) {

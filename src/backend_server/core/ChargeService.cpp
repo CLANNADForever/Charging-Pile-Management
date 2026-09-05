@@ -8,9 +8,54 @@
 namespace ncs {
 namespace backend {
 
-bool ChargeService::reserve(const QString& phone, int deviceId,
-                            ncs::Order* out, QString* err) {
-    std::lock_guard<std::mutex> lk(mu_);
+namespace {
+
+// 事务 RAII：析构时未 commit 则回滚(确保任何早退路径都释放桩/订单一致)
+class TxGuard {
+public:
+    explicit TxGuard(Store* s) : store_(s), ok_(store_ && store_->beginTx()) {}
+    ~TxGuard() {
+        if (ok_ && !committed_)
+            store_->rollbackTx();
+    }
+    bool ok() const { return ok_; }
+    void commit() {
+        if (ok_ && !committed_) {
+            committed_ = store_->commitTx();
+        }
+    }
+
+private:
+    Store* store_;
+    bool ok_;
+    bool committed_ = false;
+};
+
+}  // namespace
+
+bool ChargeService::releaseReservedLocked(int orderId) {
+    ncs::Order o;
+    if (!store_->getOrderById(orderId, &o))
+        return false;
+    if (o.status != ncs::OrderStatus::Reserved)
+        return false;
+    return store_->setDeviceState(
+               o.deviceId, static_cast<int>(ncs::DeviceState::Idle)) &&
+           store_->adjustStationFree(o.stationId, 1) &&
+           store_->updateOrderStatus(
+               orderId, static_cast<int>(ncs::OrderStatus::Canceled));
+}
+
+bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
+                            QString* err) {
+    std::lock_guard<std::mutex> ck(mu_);
+    TxGuard tx(store_);
+    if (!tx.ok()) {
+        if (err)
+            *err = QStringLiteral("事务开启失败");
+        return false;
+    }
+
     ncs::User u;
     if (!store_->findUserByPhone(phone, &u)) {
         if (err)
@@ -44,7 +89,7 @@ bool ChargeService::reserve(const QString& phone, int deviceId,
     o.phone = phone;
     o.stationId = d.stationId;
     o.deviceId = deviceId;
-    o.unitPriceCents = s.pricePerKwhCents;  // 单价快照
+    o.unitPriceCents = s.pricePerKwhCents;
     o.status = ncs::OrderStatus::Reserved;
     o.startedAt = QDateTime::currentDateTimeUtc();
     int orderId = 0;
@@ -60,6 +105,7 @@ bool ChargeService::reserve(const QString& phone, int deviceId,
             *err = QStringLiteral("占桩失败");
         return false;
     }
+    tx.commit();
     o.id = orderId;
     if (out)
         *out = o;
@@ -67,7 +113,13 @@ bool ChargeService::reserve(const QString& phone, int deviceId,
 }
 
 bool ChargeService::start(int orderId, QString* err) {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::mutex> ck(mu_);
+    TxGuard tx(store_);
+    if (!tx.ok()) {
+        if (err)
+            *err = QStringLiteral("事务开启失败");
+        return false;
+    }
     ncs::Order o;
     if (!store_->getOrderById(orderId, &o)) {
         if (err)
@@ -87,13 +139,20 @@ bool ChargeService::start(int orderId, QString* err) {
             *err = QStringLiteral("开始充电失败");
         return false;
     }
+    tx.commit();
     if (sendCmd_)
         sendCmd_(o.deviceId, true);
     return true;
 }
 
 bool ChargeService::finish(int orderId, QString* err) {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::mutex> ck(mu_);
+    TxGuard tx(store_);
+    if (!tx.ok()) {
+        if (err)
+            *err = QStringLiteral("事务开启失败");
+        return false;
+    }
     ncs::Order o;
     if (!store_->getOrderById(orderId, &o)) {
         if (err)
@@ -109,8 +168,7 @@ bool ChargeService::finish(int orderId, QString* err) {
     double energy = getEnergy_ ? getEnergy_(o.deviceId) : 0.0;
     if (energy < 0.0)
         energy = 0.0;
-    const ncs::MoneyCents amount =
-        ncs::charging_amount_cents(energy, o.unitPriceCents);
+    const ncs::MoneyCents amount = ncs::charging_amount_cents(energy, o.unitPriceCents);
 
     ncs::User u;
     if (!store_->findUserByPhone(o.phone, &u)) {
@@ -128,15 +186,46 @@ bool ChargeService::finish(int orderId, QString* err) {
             *err = QStringLiteral("结算落库失败");
         return false;
     }
+    tx.commit();
     if (sendCmd_)
         sendCmd_(o.deviceId, false);
-
-    o.status = ncs::OrderStatus::Completed;
-    o.energyKwh = energy;
-    o.amountCents = amount;
     if (err)
         err->clear();
     return true;
+}
+
+bool ChargeService::cancel(int orderId, QString* err) {
+    std::lock_guard<std::mutex> ck(mu_);
+    TxGuard tx(store_);
+    if (!tx.ok()) {
+        if (err)
+            *err = QStringLiteral("事务开启失败");
+        return false;
+    }
+    if (!releaseReservedLocked(orderId)) {
+        if (err)
+            *err = QStringLiteral("仅预约中(待开始)的订单可取消");
+        return false;
+    }
+    tx.commit();
+    return true;
+}
+
+int ChargeService::sweepExpiredReservations(int olderThanSec) {
+    std::lock_guard<std::mutex> ck(mu_);
+    const auto ids = store_->listExpiredReservedOrderIds(olderThanSec);
+    if (ids.isEmpty())
+        return 0;
+    TxGuard tx(store_);
+    if (!tx.ok())
+        return 0;
+    int n = 0;
+    for (const int id : ids) {
+        if (releaseReservedLocked(id))
+            ++n;
+    }
+    tx.commit();
+    return n;
 }
 
 }  // namespace backend

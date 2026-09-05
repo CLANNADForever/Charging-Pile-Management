@@ -2,6 +2,7 @@
 #define NCS_BACKEND_DATABASE_STORE_H
 
 #include <mutex>
+#include <thread>
 #include <QString>
 #include <QVector>
 
@@ -25,6 +26,11 @@ public:
     bool isOpen() const;
     void close();
 
+    // 事务(整段原子，可回滚)；单实例连接 + 同一写线程使用
+    bool beginTx();
+    bool commitTx();
+    bool rollbackTx();
+
     // 用户
     bool ensureUserByPhone(const QString& phone, ncs::User* out);
     bool findUserByPhone(const QString& phone, ncs::User* out) const;
@@ -45,14 +51,20 @@ public:
     bool updateOrderSettled(int id, double energyKwh,
                             ncs::MoneyCents amountCents);
     qint64 countOrders() const;
+    QVector<int> listExpiredReservedOrderIds(int olderThanSec) const;
 
 private:
     bool findLocked(const QString& phone, ncs::User* out) const;  // 调用方持锁
     bool insertUserLocked(const QString& phone);                  // 调用方持锁
     bool seedIfEmptyLocked();                                     // 调用方持锁
 
+    // 事务内(本线程)不再重复加锁，否则照常加锁
+    std::unique_lock<std::mutex> lockGuard() const;
+
     sqlite3* db_ = nullptr;
     mutable std::mutex mu_;
+    mutable bool txActive_ = false;
+    mutable std::thread::id txOwner_;
 };
 
 }  // namespace backend

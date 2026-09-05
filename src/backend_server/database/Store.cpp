@@ -29,7 +29,7 @@ Store::~Store() {
 }
 
 bool Store::open(const QString& dbPath) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (db_)
         return true;
     const QByteArray path = dbPath.toUtf8();
@@ -75,12 +75,12 @@ bool Store::open(const QString& dbPath) {
 }
 
 bool Store::isOpen() const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     return db_ != nullptr;
 }
 
 void Store::close() {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (db_) {
         sqlite3_close(db_);
         db_ = nullptr;
@@ -166,7 +166,7 @@ bool Store::insertUserLocked(const QString& phone) {
 }
 
 bool Store::findUserByPhone(const QString& phone, ncs::User* out) const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     return findLocked(phone, out);
 }
 
@@ -175,7 +175,7 @@ bool Store::ensureUserByPhone(const QString& phone, ncs::User* out) {
         return false;
     if (findUserByPhone(phone, out))
         return true;
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     if (!findLocked(phone, out) && !insertUserLocked(phone))
@@ -184,7 +184,7 @@ bool Store::ensureUserByPhone(const QString& phone, ncs::User* out) {
 }
 
 bool Store::setBalanceCents(int userId, ncs::MoneyCents cents) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -199,7 +199,7 @@ bool Store::setBalanceCents(int userId, ncs::MoneyCents cents) {
 }
 
 qint64 Store::countUsers() const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return -1;
     sqlite3_stmt* st = nullptr;
@@ -216,7 +216,7 @@ qint64 Store::countUsers() const {
 
 QVector<ncs::Station> Store::listStations() const {
     QVector<ncs::Station> out;
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return out;
     sqlite3_stmt* st = nullptr;
@@ -243,7 +243,7 @@ QVector<ncs::Station> Store::listStations() const {
 
 QVector<ncs::Device> Store::listDevicesByStation(int stationId) const {
     QVector<ncs::Device> out;
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return out;
     sqlite3_stmt* st = nullptr;
@@ -268,7 +268,7 @@ QVector<ncs::Device> Store::listDevicesByStation(int stationId) const {
 }
 
 bool Store::getStationById(int id, ncs::Station* out) const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_ || !out)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -294,7 +294,7 @@ bool Store::getStationById(int id, ncs::Station* out) const {
 }
 
 bool Store::getDeviceById(int id, ncs::Device* out) const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_ || !out)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -318,7 +318,7 @@ bool Store::getDeviceById(int id, ncs::Device* out) const {
 }
 
 bool Store::setDeviceState(int deviceId, int state) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -333,7 +333,7 @@ bool Store::setDeviceState(int deviceId, int state) {
 }
 
 bool Store::adjustStationFree(int stationId, int delta) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -350,7 +350,7 @@ bool Store::adjustStationFree(int stationId, int delta) {
 // ---------- 订单 ----------
 
 bool Store::createOrder(const ncs::Order& o, int* newId) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     const char* sql = "INSERT INTO orders (phone,station_id,device_id,unit_price_cents,"
@@ -379,7 +379,7 @@ bool Store::createOrder(const ncs::Order& o, int* newId) {
 }
 
 bool Store::getOrderById(int id, ncs::Order* out) const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_ || !out)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -410,7 +410,7 @@ bool Store::getOrderById(int id, ncs::Order* out) const {
 }
 
 bool Store::updateOrderStatus(int id, int status) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -426,7 +426,7 @@ bool Store::updateOrderStatus(int id, int status) {
 
 bool Store::updateOrderSettled(int id, double energyKwh,
                                ncs::MoneyCents amountCents) {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return false;
     sqlite3_stmt* st = nullptr;
@@ -446,7 +446,7 @@ bool Store::updateOrderSettled(int id, double energyKwh,
 }
 
 qint64 Store::countOrders() const {
-    std::lock_guard<std::mutex> lk(mu_);
+    auto lk = lockGuard();
     if (!db_)
         return -1;
     sqlite3_stmt* st = nullptr;
@@ -457,6 +457,71 @@ qint64 Store::countOrders() const {
         n = sqlite3_column_int64(st, 0);
     sqlite3_finalize(st);
     return n;
+}
+
+std::unique_lock<std::mutex> Store::lockGuard() const {
+    if (txActive_ && txOwner_ == std::this_thread::get_id())
+        return std::unique_lock<std::mutex>();  // 已是本线程事务锁内
+    return std::unique_lock<std::mutex>(mu_);
+}
+
+bool Store::beginTx() {
+    if (txActive_)
+        return false;
+    mu_.lock();
+    txActive_ = true;
+    txOwner_ = std::this_thread::get_id();
+    char* err = nullptr;
+    if (sqlite3_exec(db_, "BEGIN", nullptr, nullptr, &err) != SQLITE_OK) {
+        sqlite3_free(err);
+        txActive_ = false;
+        mu_.unlock();
+        return false;
+    }
+    return true;
+}
+
+bool Store::commitTx() {
+    if (!txActive_ || txOwner_ != std::this_thread::get_id())
+        return false;
+    char* err = nullptr;
+    const bool ok = sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &err) == SQLITE_OK;
+    if (!ok)
+        sqlite3_free(err);
+    txActive_ = false;
+    mu_.unlock();
+    return ok;
+}
+
+bool Store::rollbackTx() {
+    if (!txActive_ || txOwner_ != std::this_thread::get_id())
+        return false;
+    char* err = nullptr;
+    const bool ok = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &err) == SQLITE_OK;
+    if (!ok)
+        sqlite3_free(err);
+    txActive_ = false;
+    mu_.unlock();
+    return ok;
+}
+
+QVector<int> Store::listExpiredReservedOrderIds(int olderThanSec) const {
+    QVector<int> out;
+    auto lk = lockGuard();
+    if (!db_)
+        return out;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT id FROM orders WHERE status=0 AND started_at < ?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return out;
+    const QDateTime cutoff = QDateTime::currentDateTimeUtc().addSecs(-olderThanSec);
+    const QByteArray iso = cutoff.toString(Qt::ISODate).toUtf8();
+    sqlite3_bind_text(st, 1, iso.constData(), iso.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.push_back(sqlite3_column_int(st, 0));
+    sqlite3_finalize(st);
+    return out;
 }
 
 }  // namespace backend

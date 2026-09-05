@@ -34,6 +34,8 @@ public:
 
     bool startSimListener(int port);
     void stopSimListener();
+    bool startReserveSweeper(int timeoutSec);  // 周期释放超时预约
+    void stopReserveSweeper();
     long long simHeartbeatCount() const { return sink_.count(); }
     int simLastDeviceId() const { return sink_.lastDeviceId(); }
 
@@ -62,6 +64,8 @@ private:
     int simListenFd_ = -1;
     std::atomic<bool> simRunning_{false};
     std::thread simThread_;
+    std::atomic<bool> sweepRunning_{false};
+    std::thread sweepThread_;
 
     mutable std::mutex simMu_;       // 保护 deviceFd_ / deviceEnergy_
     std::map<int, int> deviceFd_;    // deviceId -> 连接 fd(注册的模拟器)
