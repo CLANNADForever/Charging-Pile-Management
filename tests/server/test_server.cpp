@@ -286,7 +286,8 @@ int main() {
     {
         ncs::backend::Store st;
         check(st.open(walDb), "wal store.open");
-        st.ensureUserByPhone(QStringLiteral("13800138000"), nullptr);
+        ncs::User u0;
+        st.ensureUserByPhone(QStringLiteral("13800138000"), &u0);
         check(st.addBalanceByPhone(QStringLiteral("13800138000"), 500), "wal recharge +500");
         ncs::User u;
         st.findUserByPhone(QStringLiteral("13800138000"), &u);
