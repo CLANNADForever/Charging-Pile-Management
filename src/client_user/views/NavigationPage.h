@@ -4,12 +4,14 @@
 #include <QWidget>
 
 class QLabel;
+class QPushButton;
+class QVBoxLayout;
+class QWebEngineView;
 
 namespace ncs {
 namespace client {
 
-// 路线信息页：显示 我的位置→电站 的坐标与直线距离，可跳外部地图(高德 uri)。
-// (内嵌 QWebEngine 因 VM 缺 Qt6WebEngineCore dev 依赖暂不可用，跳外部兜底)
+// 导航/路线页：内嵌 QWebEngineView 地图(Leaflet/OSM 两点+直线)，懒创建避免无头测试触发。
 class NavigationPage : public QWidget {
     Q_OBJECT
 public:
@@ -21,9 +23,14 @@ signals:
     void backRequested();
 
 private:
+    void ensureView();
+
     double myLat_ = 0, myLng_ = 0, stLat_ = 0, stLng_ = 0;
     QString stName_;
+    QVBoxLayout* layout_ = nullptr;
     QLabel* info_ = nullptr;
+    QPushButton* openBtn_ = nullptr;
+    QWebEngineView* view_ = nullptr;
 };
 
 }  // namespace client

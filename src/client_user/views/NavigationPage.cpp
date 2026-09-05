@@ -1,53 +1,37 @@
 #include "NavigationPage.h"
 
-#include <QDesktopServices>
 #include <QLabel>
 #include <QPushButton>
-#include <QUrl>
 #include <QVBoxLayout>
-#include <cmath>
+#include <QDesktopServices>
+#include <QUrl>
+
+#include <QtWebEngineWidgets/QWebEngineView>
 
 namespace ncs {
 namespace client {
 
-namespace {
-double kmBetween(double lat1, double lng1, double lat2, double lng2) {
-    constexpr double kR = 6371.0;
-    const double p = 3.14159265358979323846 / 180.0;
-    const double dLat = (lat2 - lat1) * p;
-    const double dLng = (lng2 - lng1) * p;
-    const double a = std::sin(dLat / 2) * std::sin(dLat / 2) +
-                     std::cos(lat1 * p) * std::cos(lat2 * p) *
-                         std::sin(dLng / 2) * std::sin(dLng / 2);
-    return kR * 2.0 * std::atan2(std::sqrt(a), std::sqrt(1.0 - a));
-}
-}  // namespace
-
 NavigationPage::NavigationPage(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("navigationPage"));
-    auto* layout = new QVBoxLayout(this);
+    layout_ = new QVBoxLayout(this);
     auto* heading = new QLabel(QStringLiteral("路线(我的位置 → 电站)"), this);
     heading->setObjectName(QStringLiteral("navHeading"));
     heading->setAlignment(Qt::AlignCenter);
     info_ = new QLabel(this);
     info_->setObjectName(QStringLiteral("navInfo"));
     info_->setWordWrap(true);
-    info_->setAlignment(Qt::AlignCenter);
-
-    auto* openBtn = new QPushButton(QStringLiteral("用外部地图打开(高德)"), this);
-    openBtn->setObjectName(QStringLiteral("btnNavExternal"));
+    openBtn_ = new QPushButton(QStringLiteral("用外部地图打开"), this);
+    openBtn_->setObjectName(QStringLiteral("btnNavExternal"));
     auto* back = new QPushButton(QStringLiteral("返回"), this);
     back->setObjectName(QStringLiteral("btnNavBack"));
 
-    layout->addStretch();
-    layout->addWidget(heading);
-    layout->addSpacing(12);
-    layout->addWidget(info_);
-    layout->addStretch();
-    layout->addWidget(openBtn);
-    layout->addWidget(back);
+    layout_->addWidget(heading);
+    layout_->addWidget(info_);
+    layout_->addStretch();
+    layout_->addWidget(openBtn_);
+    layout_->addWidget(back);
 
-    connect(openBtn, &QPushButton::clicked, this, [this] {
+    connect(openBtn_, &QPushButton::clicked, this, [this] {
         const QString url =
             QStringLiteral("https://uri.amap.com/navigation?from=%1,%2,我的位置"
                            "&to=%3,%4,%5&mode=car")
@@ -64,16 +48,38 @@ NavigationPage::NavigationPage(QWidget* parent) : QWidget(parent) {
 void NavigationPage::openRoute(double myLat, double myLng, double stLat,
                                double stLng, const QString& stName) {
     myLat_ = myLat; myLng_ = myLng; stLat_ = stLat; stLng_ = stLng; stName_ = stName;
-    const double km = kmBetween(myLat, myLng, stLat, stLng);
-    info_->setText(
-        QStringLiteral("起点(我的位置)：%1, %2\n终点：%3(%4, %5)\n\n直线距离约 %6 km\n"
-                       "(演示导航：点下方按钮用外部地图打开)")
-            .arg(myLat, 0, 'f', 4)
-            .arg(myLng, 0, 'f', 4)
-            .arg(stName)
-            .arg(stLat, 0, 'f', 4)
-            .arg(stLng, 0, 'f', 4)
-            .arg(km, 0, 'f', 1));
+    ensureView();
+    info_->setText(QStringLiteral("%1 → %2")
+                       .arg(QStringLiteral("我的位置"))
+                       .arg(stName));
+    const QString html = QStringLiteral(R"HTML(
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>html,body,#map{height:100%;margin:0}</style></head><body>
+<div id="map"></div><script>
+var a=[%1,%2], b=[%3,%4];
+var map=L.map('map').setView([(a[0]+b[0])/2,(a[1]+b[1])/2],12);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
+L.marker(a).addTo(map).bindPopup('我的位置').openPopup();
+L.marker(b).addTo(map).bindPopup('%5');
+L.polyline([a,b],{color:'#1a73e8'}).addTo(map);
+</script></body></html>
+)HTML")
+        .arg(myLat_, 0, 'f', 6)
+        .arg(myLng_, 0, 'f', 6)
+        .arg(stLat_, 0, 'f', 6)
+        .arg(stLng_, 0, 'f', 6)
+        .arg(stName_.toHtmlEscaped());
+    view_->setHtml(html, QUrl(QStringLiteral("https://local.map/")));
+}
+
+void NavigationPage::ensureView() {
+    if (view_)
+        return;
+    view_ = new QWebEngineView(this);
+    view_->setObjectName(QStringLiteral("navMapView"));
+    layout_->insertWidget(2, view_, 1);
 }
 
 }  // namespace client

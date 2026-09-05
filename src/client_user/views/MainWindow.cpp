@@ -15,7 +15,6 @@
 #include "views/HistoryPage.h"
 #include "views/LoginPage.h"
 #include "views/MySessionsPage.h"
-#include "views/NavigationPage.h"
 #include "views/ProfilePage.h"
 #include "views/StationDetailPage.h"
 #include "views/StationListPage.h"
@@ -39,7 +38,6 @@ MainWindow::MainWindow(IUserService* userService,
     chargePage_ = new ChargePage(chargeService, stack_);
     sessionsPage_ = new MySessionsPage(chargeService, stack_);
     historyPage_ = new HistoryPage(chargeService, stack_);
-    navPage_ = new NavigationPage(stack_);
     stack_->addWidget(loginPage);      // 0
     stack_->addWidget(profilePage_);   // 1
     stack_->addWidget(stationPage_);   // 2
@@ -47,7 +45,6 @@ MainWindow::MainWindow(IUserService* userService,
     stack_->addWidget(chargePage_);    // 4
     stack_->addWidget(sessionsPage_);  // 5
     stack_->addWidget(historyPage_);   // 6
-    stack_->addWidget(navPage_);       // 7
     setCentralWidget(stack_);
 
     connect(loginPage, &LoginPage::loginSucceeded, this,
@@ -80,8 +77,6 @@ MainWindow::MainWindow(IUserService* userService,
             &MainWindow::onSessionChosen);
     connect(historyPage_, &HistoryPage::backRequested, this,
             [this] { stack_->setCurrentIndex(1); });
-    connect(navPage_, &NavigationPage::backRequested, this,
-            [this] { stack_->setCurrentIndex(3); });
 }
 
 void MainWindow::setCurrentUser(const ncs::User& u) {
@@ -149,9 +144,32 @@ void MainWindow::onChargeBack() {
 }
 
 void MainWindow::onDetailNav() {
-    navPage_->openRoute(stationPage_->myLat(), stationPage_->myLng(),
+    emit routeRequested(stationPage_->myLat(), stationPage_->myLng(),
                         lastStLat_, lastStLng_, lastStName_);
-    stack_->setCurrentIndex(7);
+}
+
+void MainWindow::pushPage(QWidget* page, std::function<void()> onBack) {
+    if (!page)
+        return;
+    prevIndex_ = stack_->currentIndex();
+    pushedPage_ = page;
+    pushedBack_ = std::move(onBack);
+    stack_->addWidget(page);
+    stack_->setCurrentWidget(page);
+}
+
+void MainWindow::popPage() {
+    if (!pushedPage_)
+        return;
+    stack_->removeWidget(pushedPage_);
+    pushedPage_ = nullptr;
+    if (pushedBack_) {
+        auto cb = std::move(pushedBack_);
+        pushedBack_ = nullptr;
+        cb();
+    } else {
+        stack_->setCurrentIndex(prevIndex_);
+    }
 }
 
 void MainWindow::onRecharge() {

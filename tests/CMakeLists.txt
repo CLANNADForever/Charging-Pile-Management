@@ -10,7 +10,7 @@ target_include_directories(ncs_tests PRIVATE
 target_link_libraries(ncs_tests PRIVATE Qt6::Test ncs_user_ui)
 
 add_test(NAME ncs_offscreen COMMAND ncs_tests)
-set_tests_properties(ncs_offscreen PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+set_tests_properties(ncs_offscreen PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_OPENGL=software;LIBGL_ALWAYS_SOFTWARE=1;QTWEBENGINE_DISABLE_SANDBOX=1")
 
 add_subdirectory(server)
 

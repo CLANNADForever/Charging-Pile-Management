@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 
+#include <functional>
+
 #include "entities.h"
 
 class QStackedWidget;
@@ -20,7 +22,6 @@ class StationDetailPage;
 class ChargePage;
 class MySessionsPage;
 class HistoryPage;
-class NavigationPage;
 
 // C 端主窗口: 0登录 1个人 2找桩 3站内桩 4充电 5我的会话 6历史 7导航。
 class MainWindow : public QMainWindow {
@@ -30,6 +31,14 @@ public:
                         IStationService* stationService = nullptr,
                         IChargeService* chargeService = nullptr,
                         QWidget* parent = nullptr);
+
+signals:
+    void routeRequested(double myLat, double myLng, double stLat,
+                       double stLng, const QString& stName);
+
+public slots:
+    void pushPage(QWidget* page, std::function<void()> onBack);
+    void popPage();
 
 private slots:
     void onLoginSucceeded(const ncs::User& user);
@@ -58,13 +67,15 @@ private:
     QString lastStName_;
     int chargeOrigin_ = 3;
     QStackedWidget* stack_ = nullptr;
+    QWidget* pushedPage_ = nullptr;
+    std::function<void()> pushedBack_;
+    int prevIndex_ = 0;
     ProfilePage* profilePage_ = nullptr;
     StationListPage* stationPage_ = nullptr;
     StationDetailPage* detailPage_ = nullptr;
     ChargePage* chargePage_ = nullptr;
     MySessionsPage* sessionsPage_ = nullptr;
     HistoryPage* historyPage_ = nullptr;
-    NavigationPage* navPage_ = nullptr;
 };
 
 }  // namespace client
