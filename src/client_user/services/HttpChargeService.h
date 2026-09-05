@@ -18,8 +18,10 @@ public:
                  OrderCallback done) override;
     void start(int orderId, OrderCallback done) override;
     void finish(int orderId, OrderCallback done) override;
+    void pay(int orderId, OrderCallback done) override;
     void cancel(int orderId, OrderCallback done) override;
     void live(int orderId, LiveCallback done) override;
+    void listActive(const QString& phone, OrdersCallback done) override;
 
 private:
     void postOrder(const QString& path, const QJsonObject* body,

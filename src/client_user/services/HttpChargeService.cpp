@@ -76,9 +76,32 @@ void HttpChargeService::finish(int orderId, OrderCallback done) {
               std::move(done));
 }
 
+void HttpChargeService::pay(int orderId, OrderCallback done) {
+    postOrder(QStringLiteral("/api/orders/%1/pay").arg(orderId), nullptr,
+              std::move(done));
+}
+
 void HttpChargeService::cancel(int orderId, OrderCallback done) {
     postOrder(QStringLiteral("/api/orders/%1/cancel").arg(orderId), nullptr,
               std::move(done));
+}
+
+void HttpChargeService::listActive(const QString& phone, OrdersCallback done) {
+    client_.get(QStringLiteral("/api/orders/active?phone=%1").arg(phone),
+                [done = std::move(done)](const HttpJsonClient::Reply& h) {
+                    QVector<ncs::Order> out;
+                    QString err;
+                    if (!h.transportOk) {
+                        err = h.error;
+                    } else if (h.code != 0) {
+                        err = h.message;
+                    } else {
+                        const QJsonArray arr = h.data.toArray();
+                        for (const auto& v : arr)
+                            out.push_back(orderFromJson(v.toObject()));
+                    }
+                    done(out, err);
+                });
 }
 
 void HttpChargeService::live(int orderId, LiveCallback done) {

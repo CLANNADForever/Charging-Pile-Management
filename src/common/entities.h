@@ -66,12 +66,13 @@ struct Station {
     MoneyCents pricePerKwhCents = 0;  // 充电单价 分/度(元/度 * 100)
 };
 
-// 充电订单状态(预约逻辑暂不实现，先预留 Reserved)
+// 充电订单状态
 enum class OrderStatus : int {
     Reserved = 0,   // 预约/待开始
-    Charging = 1,   // 充电中(未结算)
-    Completed = 2,  // 已结算完成
-    Canceled = 3,   // 已取消
+    Charging = 1,   // 充电中
+    Completed = 2,  // 充电结束、待支付
+    Paid = 3,       // 已支付
+    Canceled = 4,   // 已取消
 };
 
 // 充电订单：单价在开单时快照，费率后续调整不影响历史订单

@@ -189,7 +189,7 @@ int main() {
         app.stopSimListener();
     }
 
-    // 5) 充电最小闭环(ChargeService 直测；注入能量 2.0kWh)
+    // 5) 充电闭环：结束生成待支付账单；支付才扣款；未支付禁止开新桩
     const QString chgDb = tempDb("chg");
     {
         ncs::backend::Store st;
@@ -205,33 +205,50 @@ int main() {
         check(cs.reserve(QStringLiteral("13800138000"), 1, &o, &err),
               "chg: reserve ok");
         check(o.status == ncs::OrderStatus::Reserved && o.unitPriceCents == 200,
-              "chg: order reserved + price snapshot 200");
-        check(st.getDeviceById(1, &dev) && dev.state == ncs::DeviceState::Reserved,
-              "chg: device Reserved");
+              "chg: reserved + price snapshot 200");
+        st.getDeviceById(1, &dev);
+        check(dev.state == ncs::DeviceState::Reserved, "chg: device Reserved");
         ncs::Station s1;
         st.getStationById(1, &s1);
-        check(s1.freePiles == 1, "chg: station1 free ->1");
+        check(s1.freePiles == 1, "chg: free ->1");
         ncs::Order o2;
         QString err2;
         check(!cs.reserve(QStringLiteral("13800138000"), 1, &o2, &err2),
-              "chg: double reserve blocked");
+              "chg: double reserve same device blocked");
         check(cs.start(o.id, &err), "chg: start ok");
-        check(cs.finish(o.id, &err), "chg: finish ok");
+        check(cs.finish(o.id, &err), "chg: finish ok (生成账单不扣款)");
         ncs::Order done;
         st.getOrderById(o.id, &done);
         check(done.status == ncs::OrderStatus::Completed && done.amountCents == 400 &&
                   done.energyKwh == 2.0,
-              "chg: settled amount 400 (2.0kWh x 200)");
+              "chg: bill amount 400 (2.0kWh x 200)");
         ncs::User after;
         st.findUserByPhone(QStringLiteral("13800138000"), &after);
-        check(after.balanceCents == -400, "chg: balance -400 (欠费)");
-        check(st.getDeviceById(1, &dev) && dev.state == ncs::DeviceState::Idle,
-              "chg: device back Idle");
+        check(after.balanceCents == 0, "chg: finish does NOT deduct (balance 0)");
+        st.getDeviceById(1, &dev);
         st.getStationById(1, &s1);
-        check(s1.freePiles == 2, "chg: station1 free back 2");
-    }
-    ::unlink(chgDb.toLocal8Bit().constData());
+        check(dev.state == ncs::DeviceState::Idle && s1.freePiles == 2,
+              "chg: device freed after finish");
 
+        ncs::Order o3;
+        QString err3;
+        check(!cs.reserve(QStringLiteral("13800138000"), 2, &o3, &err3) &&
+                  err3.contains(QStringLiteral("支付")),
+              "chg: unpaid bill blocks new pile");
+        check(st.countUnpaidByPhone(QStringLiteral("13800138000")) == 1,
+              "chg: one unpaid order");
+
+        check(cs.pay(o.id, &err), "chg: pay ok");
+        ncs::Order paid;
+        st.getOrderById(o.id, &paid);
+        st.findUserByPhone(QStringLiteral("13800138000"), &after);
+        check(paid.status == ncs::OrderStatus::Paid && after.balanceCents == -400,
+              "chg: after pay -> Paid, balance -400");
+        check(st.countUnpaidByPhone(QStringLiteral("13800138000")) == 0,
+              "chg: unpaid cleared");
+        check(cs.reserve(QStringLiteral("13800138000"), 2, &o3, &err3),
+              "chg: reserve allowed after pay");
+    }
     // 6) 预约取消 + 超时清扫
     const QString cnlDb = tempDb("cnl");
     {

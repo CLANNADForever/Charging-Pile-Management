@@ -13,8 +13,9 @@ namespace backend {
 
 class Store;
 
-// 充电主流程(预约/开始/结算/取消/超时清扫)。每个业务方法整体包在 Store 事务里，
-// 任一步失败回滚；ChargeService 自持互斥锁避免并发业务交错。
+// 充电主流程。业务方法包在 Store 事务里可回滚；自持互斥锁防并发交错。
+// 语义：支持同一用户多桩并发；finish 只生成"待支付"账单(Completed)，
+//       pay 才真正扣款(Paid)；存在未支付账单时不允许预约新桩。
 class ChargeService {
 public:
     using SendCmdFn = std::function<void(int deviceId, bool start)>;
@@ -27,12 +28,13 @@ public:
     bool reserve(const QString& phone, int deviceId, ncs::Order* out,
                  QString* err);
     bool start(int orderId, QString* err);
-    bool finish(int orderId, QString* err);
-    bool cancel(int orderId, QString* err);  // 仅 Reserved 可取消(释放桩)
-    int sweepExpiredReservations(int olderThanSec);  // 释放超时未开始的预约
+    bool finish(int orderId, QString* err);   // 生成待支付账单(不扣款)
+    bool pay(int orderId, QString* err);      // 扣款并标记已支付
+    bool cancel(int orderId, QString* err);   // 仅 Reserved 可取消
+    int sweepExpiredReservations(int olderThanSec);
 
 private:
-    bool releaseReservedLocked(int orderId);  // 调用方已持锁+事务
+    bool releaseReservedLocked(int orderId);
 
     Store* store_;
     SendCmdFn sendCmd_;

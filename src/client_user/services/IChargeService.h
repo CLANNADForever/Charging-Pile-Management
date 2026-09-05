@@ -26,6 +26,8 @@ struct LiveInfo {
 };
 using OrderCallback = std::function<void(const OrderResult&)>;
 using LiveCallback = std::function<void(const LiveInfo&)>;
+using OrdersCallback =
+    std::function<void(const QVector<ncs::Order>&, const QString& error)>;
 
 class IChargeService {
 public:
@@ -34,8 +36,10 @@ public:
                          OrderCallback done) = 0;
     virtual void start(int orderId, OrderCallback done) = 0;
     virtual void finish(int orderId, OrderCallback done) = 0;
+    virtual void pay(int orderId, OrderCallback done) = 0;
     virtual void cancel(int orderId, OrderCallback done) = 0;
     virtual void live(int orderId, LiveCallback done) = 0;
+    virtual void listActive(const QString& phone, OrdersCallback done) = 0;
 };
 
 }  // namespace client

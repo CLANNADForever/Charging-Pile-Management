@@ -50,6 +50,9 @@ public:
     bool updateOrderStatus(int id, int status);
     bool updateOrderSettled(int id, double energyKwh,
                             ncs::MoneyCents amountCents);
+    bool updateOrderPaid(int id);
+    qint64 countUnpaidByPhone(const QString& phone) const;
+    QVector<ncs::Order> listActiveOrdersByPhone(const QString& phone) const;
     qint64 countOrders() const;
     QVector<int> listExpiredReservedOrderIds(int olderThanSec) const;
 

@@ -9,8 +9,6 @@ namespace ncs {
 namespace backend {
 
 namespace {
-
-// 事务 RAII：析构时未 commit 则回滚(确保任何早退路径都释放桩/订单一致)
 class TxGuard {
 public:
     explicit TxGuard(Store* s) : store_(s), ok_(store_ && store_->beginTx()) {}
@@ -20,17 +18,14 @@ public:
     }
     bool ok() const { return ok_; }
     void commit() {
-        if (ok_ && !committed_) {
+        if (ok_ && !committed_)
             committed_ = store_->commitTx();
-        }
     }
-
 private:
     Store* store_;
     bool ok_;
     bool committed_ = false;
 };
-
 }  // namespace
 
 bool ChargeService::releaseReservedLocked(int orderId) {
@@ -55,7 +50,6 @@ bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
             *err = QStringLiteral("事务开启失败");
         return false;
     }
-
     ncs::User u;
     if (!store_->findUserByPhone(phone, &u)) {
         if (err)
@@ -65,6 +59,11 @@ bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
     if (u.status == ncs::UserStatus::Frozen) {
         if (err)
             *err = QStringLiteral("账号已冻结");
+        return false;
+    }
+    if (store_->countUnpaidByPhone(phone) > 0) {
+        if (err)
+            *err = QStringLiteral("存在未支付账单，请先在我的充电中支付");
         return false;
     }
     ncs::Device d;
@@ -84,7 +83,6 @@ bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
             *err = QStringLiteral("所属站点不存在");
         return false;
     }
-
     ncs::Order o;
     o.phone = phone;
     o.stationId = d.stationId;
@@ -161,29 +159,20 @@ bool ChargeService::finish(int orderId, QString* err) {
     }
     if (o.status != ncs::OrderStatus::Charging) {
         if (err)
-            *err = QStringLiteral("订单非充电中，无法结算");
+            *err = QStringLiteral("订单非充电中，无法结束");
         return false;
     }
-
     double energy = getEnergy_ ? getEnergy_(o.deviceId) : 0.0;
     if (energy < 0.0)
         energy = 0.0;
     const ncs::MoneyCents amount = ncs::charging_amount_cents(energy, o.unitPriceCents);
-
-    ncs::User u;
-    if (!store_->findUserByPhone(o.phone, &u)) {
-        if (err)
-            *err = QStringLiteral("用户不存在");
-        return false;
-    }
-    const ncs::MoneyCents newBalance = u.balanceCents - amount;  // 允许欠费
-    if (!store_->setBalanceCents(u.id, newBalance) ||
-        !store_->setDeviceState(o.deviceId,
+    // 结束充电：释放桩，生成"待支付"账单(不扣款)
+    if (!store_->setDeviceState(o.deviceId,
                                 static_cast<int>(ncs::DeviceState::Idle)) ||
         !store_->adjustStationFree(o.stationId, 1) ||
         !store_->updateOrderSettled(orderId, energy, amount)) {
         if (err)
-            *err = QStringLiteral("结算落库失败");
+            *err = QStringLiteral("结束充电落库失败");
         return false;
     }
     tx.commit();
@@ -191,6 +180,42 @@ bool ChargeService::finish(int orderId, QString* err) {
         sendCmd_(o.deviceId, false);
     if (err)
         err->clear();
+    return true;
+}
+
+bool ChargeService::pay(int orderId, QString* err) {
+    std::lock_guard<std::mutex> ck(mu_);
+    TxGuard tx(store_);
+    if (!tx.ok()) {
+        if (err)
+            *err = QStringLiteral("事务开启失败");
+        return false;
+    }
+    ncs::Order o;
+    if (!store_->getOrderById(orderId, &o)) {
+        if (err)
+            *err = QStringLiteral("订单不存在");
+        return false;
+    }
+    if (o.status != ncs::OrderStatus::Completed) {
+        if (err)
+            *err = QStringLiteral("该订单不是待支付状态");
+        return false;
+    }
+    ncs::User u;
+    if (!store_->findUserByPhone(o.phone, &u)) {
+        if (err)
+            *err = QStringLiteral("用户不存在");
+        return false;
+    }
+    const ncs::MoneyCents newBalance = u.balanceCents - o.amountCents;  // 允许欠费
+    if (!store_->setBalanceCents(u.id, newBalance) ||
+        !store_->updateOrderPaid(orderId)) {
+        if (err)
+            *err = QStringLiteral("支付落库失败");
+        return false;
+    }
+    tx.commit();
     return true;
 }
 

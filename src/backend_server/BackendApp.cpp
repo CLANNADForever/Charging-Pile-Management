@@ -259,6 +259,40 @@ void BackendApp::registerRoutes() {
                                    {"energy_kwh", energy},
                                    {"amount_cents", ncs::charging_amount_cents(energy, o.unitPriceCents)}});
              });
+
+    srv_.Post(R"(/api/orders/(\d+)/pay)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺订单 id", nullptr);
+                      return;
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  QString err;
+                  if (!charge_->pay(id, &err)) {
+                      replyBizErr(res, err);
+                      return;
+                  }
+                  ncs::Order o;
+                  store_.getOrderById(id, &o);
+                  replyOk(res, orderToJson(o));
+              });
+
+    // 我的充电会话(活跃: Reserved/Charging/Completed待支付)
+    srv_.Get("/api/orders/active",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString phone;
+                 if (!req.has_param("phone") ||
+                     (phone = QString::fromStdString(req.get_param_value("phone")))
+                         .isEmpty()) {
+                     reply(res, kCodeBadReq, "需 phone 查询参数", nullptr);
+                     return;
+                 }
+                 const auto orders = store_.listActiveOrdersByPhone(phone);
+                 json arr = json::array();
+                 for (const auto& o : orders)
+                     arr.push_back(orderToJson(o));
+                 replyOk(res, std::move(arr));
+             });
 }
 
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------

@@ -524,5 +524,71 @@ QVector<int> Store::listExpiredReservedOrderIds(int olderThanSec) const {
     return out;
 }
 
+bool Store::updateOrderPaid(int id) {
+    auto lk = lockGuard();
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE orders SET status=3 WHERE id=?", -1,
+                           &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, id);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE;
+}
+
+qint64 Store::countUnpaidByPhone(const QString& phone) const {
+    auto lk = lockGuard();
+    if (!db_)
+        return -1;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT COUNT(*) FROM orders WHERE phone=? AND status=2",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return -1;
+    const QByteArray p = phone.toUtf8();
+    sqlite3_bind_text(st, 1, p.constData(), p.size(), SQLITE_TRANSIENT);
+    qint64 n = 0;
+    if (sqlite3_step(st) == SQLITE_ROW)
+        n = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+    return n;
+}
+
+QVector<ncs::Order> Store::listActiveOrdersByPhone(const QString& phone) const {
+    QVector<ncs::Order> out;
+    auto lk = lockGuard();
+    if (!db_)
+        return out;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT id,phone,station_id,device_id,unit_price_cents,"
+                           "amount_cents,energy_kwh,status,started_at,finished_at "
+                           "FROM orders WHERE phone=? AND status IN (0,1,2) ORDER BY id DESC",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return out;
+    const QByteArray p = phone.toUtf8();
+    sqlite3_bind_text(st, 1, p.constData(), p.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        ncs::Order o;
+        o.id = sqlite3_column_int(st, 0);
+        o.phone = columnText(st, 1);
+        o.stationId = sqlite3_column_int(st, 2);
+        o.deviceId = sqlite3_column_int(st, 3);
+        o.unitPriceCents = sqlite3_column_int64(st, 4);
+        o.amountCents = sqlite3_column_int64(st, 5);
+        o.energyKwh = sqlite3_column_double(st, 6);
+        o.status = static_cast<ncs::OrderStatus>(sqlite3_column_int(st, 7));
+        o.startedAt = fromDbIso(columnText(st, 8));
+        const QString f = columnText(st, 9);
+        if (!f.isEmpty())
+            o.finishedAt = fromDbIso(f);
+        out.push_back(o);
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
 }  // namespace backend
 }  // namespace ncs

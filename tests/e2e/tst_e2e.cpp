@@ -204,15 +204,31 @@ void TstE2e::chargeFullCircle() {
     QCOMPARE(r5.order.status, ncs::OrderStatus::Completed);
     QCOMPARE(r5.order.amountCents, ncs::MoneyCents(500));
 
+    // 未支付账单 -> 禁止开新桩
     bool d6 = false;
-    ncs::client::OrderResult r6;
-    svc.reserve(phone, 2, [&](const ncs::client::OrderResult& x) { r6 = x; d6 = true; });
+    ncs::client::OrderResult g;
+    svc.reserve(phone, 2, [&](const ncs::client::OrderResult& x) { g = x; d6 = true; });
     QTRY_VERIFY_WITH_TIMEOUT(d6, 3000);
-    QVERIFY(r6.ok);
+    QVERIFY(!g.ok);
+
+    // 支付 -> Paid
     bool d7 = false;
-    ncs::client::OrderResult r7;
-    svc.cancel(r6.order.id, [&](const ncs::client::OrderResult& x) { r7 = x; d7 = true; });
+    ncs::client::OrderResult pay;
+    svc.pay(r1.order.id, [&](const ncs::client::OrderResult& x) { pay = x; d7 = true; });
     QTRY_VERIFY_WITH_TIMEOUT(d7, 3000);
+    QVERIFY2(pay.ok, qPrintable(pay.message));
+    QCOMPARE(pay.order.status, ncs::OrderStatus::Paid);
+
+    // 支付后允许再开，再取消
+    bool d8 = false;
+    ncs::client::OrderResult r6;
+    svc.reserve(phone, 2, [&](const ncs::client::OrderResult& x) { r6 = x; d8 = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(d8, 3000);
+    QVERIFY(r6.ok);
+    bool d9 = false;
+    ncs::client::OrderResult r7;
+    svc.cancel(r6.order.id, [&](const ncs::client::OrderResult& x) { r7 = x; d9 = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(d9, 3000);
     QVERIFY2(r7.ok, qPrintable(r7.message));
 
     close(fd);
