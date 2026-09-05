@@ -1,4 +1,7 @@
 // NCS 共享实体：所有端(UI/后端)共用的纯数据结构，不含 UI 与网络逻辑。
+// 建模原则：
+//   - 只放"需要持久化 / 展示、且不能现场算出来"的字段；
+//   - 可推导项(在线率/距离/累计充电次数=按订单聚合)不入实体，避免冗余漂移。
 #ifndef NCS_COMMON_ENTITIES_H
 #define NCS_COMMON_ENTITIES_H
 
@@ -9,14 +12,22 @@
 
 namespace ncs {
 
-// 供测试与界面使用的工程标识
 const char* project_name();
 
-// 用户：11 位手机号为免密登录主键；金额一律为"分"
+// 用户账号状态(B 端风控)
+enum class UserStatus : int {
+    Normal = 0,  // 正常
+    Frozen = 1,  // 冻结：禁止发起新交易
+};
+
+// 用户：11 位手机号为免密登录业务键；金额一律"分"
 struct User {
+    int id = 0;              // 运营侧数字主键
     QString phone;
     QString nickname;
     MoneyCents balanceCents = 0;
+    UserStatus status = UserStatus::Normal;
+    QDateTime registeredAt;  // 注册时间
 };
 
 // 充电桩运行状态
@@ -26,15 +37,23 @@ enum class DeviceState : int {
     Fault = 2,     // 故障
 };
 
-// 充电桩(起步字段，运营端字段后续 change 再加)
-struct Device {
-    int id = 0;
-    DeviceState state = DeviceState::Idle;
-    double powerKw = 0.0;
-    double energyKwh = 0.0;
+// 充电桩类型(快充/慢充)
+enum class DeviceType : int {
+    Fast = 0,  // 快充
+    Slow = 1,  // 慢充
 };
 
-// 充电站(找桩/导航用字段起步；freePiles 需随预约/结束实时维护)
+// 充电桩(状态/功率等为运行时快照；电压电流温度走模拟器遥测流，不在此持久化)
+struct Device {
+    int id = 0;
+    int stationId = 0;       // 所属充电站
+    DeviceType type = DeviceType::Fast;
+    DeviceState state = DeviceState::Idle;
+    double powerKw = 0.0;
+    double energyKwh = 0.0;  // 本次会话累计电量
+};
+
+// 充电站(经纬度/空闲桩数；在线率=按桩现算；距离=按定位现算)
 struct Station {
     int id = 0;
     QString name;
@@ -42,27 +61,30 @@ struct Station {
     double latitude = 0.0;
     double longitude = 0.0;
     int totalPiles = 0;
-    int freePiles = 0;
+    int freePiles = 0;              // 由预约/结算维护
+    MoneyCents pricePerKwhCents = 0;  // 充电单价 分/度(元/度 * 100)
 };
 
-// 充电订单状态
+// 充电订单状态(预约逻辑暂不实现，先预留 Reserved)
 enum class OrderStatus : int {
-    Charging = 0,   // 充电中(未结算)
-    Completed = 1,  // 已结算完成
-    Canceled = 2,   // 已取消
+    Reserved = 0,   // 预约/待开始
+    Charging = 1,   // 充电中(未结算)
+    Completed = 2,  // 已结算完成
+    Canceled = 3,   // 已取消
 };
 
-// 充电订单：金额一律 MoneyCents(分)；energyKwh 由设备计量累计
+// 充电订单：单价在开单时快照，费率后续调整不影响历史订单
 struct Order {
     int id = 0;
-    QString phone;         // 下单用户
+    QString phone;          // 下单用户
     int stationId = 0;
     int deviceId = 0;
-    QDateTime startedAt;
+    QDateTime startedAt;    // 预约时间(=开单时间)
     QDateTime finishedAt;
     double energyKwh = 0.0;
-    MoneyCents amountCents = 0;
-    OrderStatus status = OrderStatus::Charging;
+    MoneyCents unitPriceCents = 0;  // 单价快照 分/度
+    MoneyCents amountCents = 0;     // 应收金额(分)
+    OrderStatus status = OrderStatus::Reserved;
 };
 
 }  // namespace ncs

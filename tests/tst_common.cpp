@@ -19,10 +19,11 @@ private slots:
     void billingHalfUp();
     void chargeAmounts();
     void userDefaults();
-    void userFields();
-    void deviceState();
-    void stationDefaults();
-    void orderFields();
+    void userRiskFields();
+    void deviceStateType();
+    void stationDefaultsAndPrice();
+    void orderDefaultsReservedAndSnapshot();
+    void orderCompleted();
     void invalidPhoneFails();
     void wrongCodeShowsError();
     void loginSuccessRegistersAndShowsProfile();
@@ -38,7 +39,6 @@ void TstNcs::moneyFormat() {
 }
 
 void TstNcs::billingHalfUp() {
-    // 元 → 分，四舍五入
     QCOMPARE(ncs::yuan_to_cents(0.0), ncs::MoneyCents(0));
     QCOMPARE(ncs::yuan_to_cents(12.5), ncs::MoneyCents(1250));
     QCOMPARE(ncs::yuan_to_cents(0.25), ncs::MoneyCents(25));
@@ -46,64 +46,85 @@ void TstNcs::billingHalfUp() {
 }
 
 void TstNcs::chargeAmounts() {
-    // kWh × 分/kWh → 分(half-up)
     QCOMPARE(ncs::charging_amount_cents(2.0, 100), ncs::MoneyCents(200));
-    QCOMPARE(ncs::charging_amount_cents(0.5, 3), ncs::MoneyCents(2));   // 1.5 → 2
-    QCOMPARE(ncs::charging_amount_cents(0.4, 3), ncs::MoneyCents(1));   // 1.2 → 1
+    QCOMPARE(ncs::charging_amount_cents(0.5, 3), ncs::MoneyCents(2));   // 1.5 -> 2
+    QCOMPARE(ncs::charging_amount_cents(0.4, 3), ncs::MoneyCents(1));   // 1.2 -> 1
     QCOMPARE(ncs::charging_amount_cents(0.0, 100), ncs::MoneyCents(0));
 }
 
 void TstNcs::userDefaults() {
     ncs::User u;
+    QCOMPARE(u.id, 0);
     QCOMPARE(u.phone, QString());
     QCOMPARE(u.balanceCents, ncs::MoneyCents(0));
+    QCOMPARE(int(u.status), int(ncs::UserStatus::Normal));
+    QVERIFY(u.registeredAt.isNull());
 }
 
-void TstNcs::userFields() {
+void TstNcs::userRiskFields() {
     ncs::User u;
+    u.id = 1;
     u.phone = QStringLiteral("13800138000");
     u.balanceCents = 1250;
+    u.status = ncs::UserStatus::Frozen;
+    u.registeredAt = QDateTime::fromString(QStringLiteral("2026-09-04T10:00:00"), Qt::ISODate);
+    QCOMPARE(u.id, 1);
     QCOMPARE(u.phone, QStringLiteral("13800138000"));
     QCOMPARE(u.balanceCents, ncs::MoneyCents(1250));
+    QCOMPARE(int(u.status), int(ncs::UserStatus::Frozen));
+    QVERIFY(!u.registeredAt.isNull());
 }
 
-void TstNcs::deviceState() {
+void TstNcs::deviceStateType() {
     ncs::Device d;
     QCOMPARE(int(d.state), int(ncs::DeviceState::Idle));
+    QCOMPARE(int(d.type), int(ncs::DeviceType::Fast));
     d.state = ncs::DeviceState::Charging;
-    QCOMPARE(int(d.state), 1);
+    d.type = ncs::DeviceType::Slow;
     d.powerKw = 7.2;
+    QCOMPARE(int(d.state), 1);
+    QCOMPARE(int(d.type), int(ncs::DeviceType::Slow));
     QVERIFY(d.powerKw > 7.0);
 }
 
-void TstNcs::stationDefaults() {
+void TstNcs::stationDefaultsAndPrice() {
     ncs::Station s;
     QCOMPARE(s.id, 0);
     QCOMPARE(s.name, QString());
     QCOMPARE(s.totalPiles, 0);
     QCOMPARE(s.freePiles, 0);
+    QCOMPARE(s.pricePerKwhCents, ncs::MoneyCents(0));
+    s.pricePerKwhCents = 200;  // 2 元/度
+    QCOMPARE(ncs::format_cents(s.pricePerKwhCents), QStringLiteral("2.00"));
 }
 
-void TstNcs::orderFields() {
+void TstNcs::orderDefaultsReservedAndSnapshot() {
     ncs::Order o;
-    QCOMPARE(int(o.status), int(ncs::OrderStatus::Charging));
+    QCOMPARE(int(o.status), int(ncs::OrderStatus::Reserved));
+    QCOMPARE(o.unitPriceCents, ncs::MoneyCents(0));
     QCOMPARE(o.amountCents, ncs::MoneyCents(0));
+}
 
+void TstNcs::orderCompleted() {
+    ncs::Order o;
     o.phone = QStringLiteral("13800138000");
     o.deviceId = 7;
     o.energyKwh = 1.5;
-    o.amountCents = ncs::charging_amount_cents(1.5, 200);  // 1.5kWh × 2.00元 = 3.00元
+    o.unitPriceCents = 200;                        // 开单时单价快照(2 元/度)
+    o.amountCents = ncs::charging_amount_cents(1.5, 200);
     o.status = ncs::OrderStatus::Completed;
     QCOMPARE(o.phone, QStringLiteral("13800138000"));
+    QCOMPARE(o.unitPriceCents, ncs::MoneyCents(200));
     QCOMPARE(o.amountCents, ncs::MoneyCents(300));
     QCOMPARE(int(o.status), int(ncs::OrderStatus::Completed));
+    QVERIFY(!o.startedAt.isValid());
 }
 
 void TstNcs::invalidPhoneFails() {
     ncs::client::MockUserService svc;
-    auto r = svc.requestCode(QStringLiteral("123"));       // 太短
+    auto r = svc.requestCode(QStringLiteral("123"));
     QVERIFY(!r.ok);
-    r = svc.requestCode(QStringLiteral("23800138000"));    // 非 1 开头
+    r = svc.requestCode(QStringLiteral("23800138000"));
     QVERIFY(!r.ok);
     r = svc.requestCode(QStringLiteral("13800138000"));
     QVERIFY(r.ok);
@@ -127,7 +148,7 @@ void TstNcs::wrongCodeShowsError() {
 
     auto* stack = w.findChild<QStackedWidget*>();
     QVERIFY(stack);
-    QCOMPARE(stack->currentIndex(), 0);  // 仍停留在登录页
+    QCOMPARE(stack->currentIndex(), 0);
 }
 
 void TstNcs::loginSuccessRegistersAndShowsProfile() {
@@ -151,7 +172,7 @@ void TstNcs::loginSuccessRegistersAndShowsProfile() {
 
     auto* stack = w.findChild<QStackedWidget*>();
     QVERIFY(stack);
-    QCOMPARE(stack->currentIndex(), 1);  // 切到个人中心
+    QCOMPARE(stack->currentIndex(), 1);
 
     auto* phoneLbl = w.findChild<QLabel*>("profilePhone");
     auto* balanceLbl = w.findChild<QLabel*>("profileBalance");
