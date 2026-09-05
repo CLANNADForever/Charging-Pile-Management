@@ -129,24 +129,27 @@ int main() {
 
         auto health = cli.Get("/health");
         check(health && health->status == 200 &&
-                  health->body.find("\"ok\":true") != std::string::npos,
+                  health->body.find("\"code\":0") != std::string::npos &&
+                  health->body.find("\"service\":\"ncs-backend\"") != std::string::npos,
               "GET /health -> ok");
 
         auto loginGood = cli.Post("/api/auth/login",
                                   "{\"phone\":\"13800138000\",\"code\":\"123456\"}",
                                   "application/json");
-        check(loginGood && loginGood->body.find("\"ok\":true") != std::string::npos &&
+        check(loginGood && loginGood->body.find("\"code\":0") != std::string::npos &&
                   loginGood->body.find("\"balance_cents\":0") != std::string::npos,
               "login -> ok");
 
         auto stations = cli.Get("/api/stations");
         check(stations && stations->status == 200 &&
+                  stations->body.find("\"code\":0") != std::string::npos &&
                   stations->body.find(R"("name":"望京充电站")") != std::string::npos &&
                   stations->body.find(R"("name":"亦庄超充站")") != std::string::npos,
               "GET /api/stations -> seeded stations");
 
         auto devices = cli.Get("/api/stations/1/devices");
         check(devices && devices->status == 200 &&
+                  devices->body.find("\"code\":0") != std::string::npos &&
                   devices->body.find(R"("station_id":1)") != std::string::npos,
               "GET /api/stations/1/devices -> devices");
 

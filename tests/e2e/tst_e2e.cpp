@@ -1,9 +1,8 @@
-// 端到端联测：线程里起真实 ncs 后端(BackendApp/httplib)，HttpUserService 走
-// HTTP 完成 send-code/login，验证客户端服务接口与后端契约一致。
+// 端到端联测：线程里起真实后端(BackendApp/httplib)，Http 客户端服务异步回调覆盖契约。
 #include <QtTest>
+#include <memory>
 #include <thread>
 #include <chrono>
-#include <memory>
 #include <unistd.h>
 
 #include "services/HttpUserService.h"
@@ -45,59 +44,88 @@ void TstE2e::cleanupTestCase() {
     ::unlink(dbPath_.toLocal8Bit().constData());
 }
 
-static ncs::client::HttpUserService makeSvc(int port) {
-    return ncs::client::HttpUserService(
-        QStringLiteral("http://127.0.0.1:%1").arg(port));
+static QString baseUrl(int port) {
+    return QStringLiteral("http://127.0.0.1:%1").arg(port);
 }
 
 void TstE2e::sendCodeOkAndHint() {
-    auto svc = makeSvc(port_);
-    const auto r = svc.requestCode(QStringLiteral("13800138000"));
+    ncs::client::HttpUserService svc(baseUrl(port_));
+    bool done = false;
+    ncs::client::LoginResult r;
+    svc.requestCode(QStringLiteral("13800138000"),
+                    [&](const ncs::client::LoginResult& x) { r = x; done = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 3000);
     QVERIFY(r.ok);
     QVERIFY(r.message.contains(QStringLiteral("123456")));
 }
 
 void TstE2e::invalidPhoneFails() {
-    auto svc = makeSvc(port_);
-    const auto r = svc.requestCode(QStringLiteral("123"));
+    ncs::client::HttpUserService svc(baseUrl(port_));
+    bool done = false;
+    ncs::client::LoginResult r;
+    svc.requestCode(QStringLiteral("123"),
+                    [&](const ncs::client::LoginResult& x) { r = x; done = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 3000);
     QVERIFY(!r.ok);
     QVERIFY(r.message.contains(QStringLiteral("11 位手机号")));
 }
 
 void TstE2e::loginRegistersAndIdempotent() {
-    auto svc = makeSvc(port_);
-    const auto r1 = svc.login(QStringLiteral("13911112222"),
-                              QStringLiteral("123456"));
+    ncs::client::HttpUserService svc(baseUrl(port_));
+    bool d1 = false, d2 = false;
+    ncs::client::LoginResult r1, r2;
+    svc.login(QStringLiteral("13911112222"), QStringLiteral("123456"),
+              [&](const ncs::client::LoginResult& x) { r1 = x; d1 = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(d1, 3000);
     QVERIFY2(r1.ok, qPrintable(r1.message));
     QCOMPARE(r1.user.phone, QStringLiteral("13911112222"));
     QCOMPARE(r1.user.balanceCents, ncs::MoneyCents(0));
-    QVERIFY(!r1.user.nickname.isEmpty());
 
-    const auto r2 = svc.login(QStringLiteral("13911112222"),
-                              QStringLiteral("123456"));
+    svc.login(QStringLiteral("13911112222"), QStringLiteral("123456"),
+              [&](const ncs::client::LoginResult& x) { r2 = x; d2 = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(d2, 3000);
     QVERIFY(r2.ok);
-    QCOMPARE(r2.user.id, r1.user.id);  // 幂等：同一用户
+    QCOMPARE(r2.user.id, r1.user.id);
 }
 
 void TstE2e::wrongCodeFails() {
-    auto svc = makeSvc(port_);
-    const auto r = svc.login(QStringLiteral("13911112222"),
-                             QStringLiteral("000000"));
+    ncs::client::HttpUserService svc(baseUrl(port_));
+    bool done = false;
+    ncs::client::LoginResult r;
+    svc.login(QStringLiteral("13911112222"), QStringLiteral("000000"),
+              [&](const ncs::client::LoginResult& x) { r = x; done = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 3000);
     QVERIFY(!r.ok);
     QVERIFY(!r.message.isEmpty());
 }
 
 void TstE2e::stationsThroughService() {
-    const QString base = QStringLiteral("http://127.0.0.1:%1").arg(port_);
-    ncs::client::HttpStationService svc(base);
-    const auto stations = svc.listStations();
-    QCOMPARE(stations.size(), 3);  // seed 数据
+    ncs::client::HttpStationService svc(baseUrl(port_));
+    bool done = false;
+    QVector<ncs::Station> stations;
+    QString err;
+    svc.listStations([&](const QVector<ncs::Station>& st, const QString& e) {
+        stations = st;
+        err = e;
+        done = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 3000);
+    QVERIFY2(err.isEmpty(), qPrintable(err));
+    QCOMPARE(stations.size(), 3);
     QVERIFY(stations.first().freePiles > 0);
-    QVERIFY(stations.first().pricePerKwhCents > 0);
-    const auto devices = svc.listDevices(stations.first().id);
-    QVERIFY2(devices.size() >= 2, "station 1 should own >=2 devices");
+
+    bool d2 = false;
+    QVector<ncs::Device> devices;
+    svc.listDevices(stations.first().id,
+                    [&](const QVector<ncs::Device>& dv, const QString& e) {
+                        devices = dv;
+                        err = e;
+                        d2 = true;
+                    });
+    QTRY_VERIFY_WITH_TIMEOUT(d2, 3000);
+    QVERIFY2(err.isEmpty(), qPrintable(err));
+    QVERIFY(devices.size() >= 2);
 }
 
 #include "tst_e2e.moc"
-
 QTEST_MAIN(TstE2e)

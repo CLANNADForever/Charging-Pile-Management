@@ -15,7 +15,6 @@ LoginPage::LoginPage(IUserService* service, QWidget* parent)
     setObjectName(QStringLiteral("loginPage"));
 
     auto* layout = new QVBoxLayout(this);
-
     auto* heading = new QLabel(QStringLiteral("手机号免密登录"), this);
     heading->setObjectName(QStringLiteral("loginHeading"));
     heading->setAlignment(Qt::AlignCenter);
@@ -66,8 +65,11 @@ void LoginPage::onSendCode() {
         status_->setText(QStringLiteral("请先输入手机号"));
         return;
     }
-    const LoginResult r = service_->requestCode(phone);
-    status_->setText(r.ok ? r.message : QStringLiteral("提示：") + r.message);
+    status_->setText(QStringLiteral("发送中…"));
+    service_->requestCode(
+        phone, [this](const LoginResult& r) {
+            status_->setText(r.ok ? r.message : QStringLiteral("提示：") + r.message);
+        });
 }
 
 void LoginPage::onLogin() {
@@ -77,13 +79,15 @@ void LoginPage::onLogin() {
         status_->setText(QStringLiteral("请填写手机号与验证码"));
         return;
     }
-    const LoginResult r = service_->login(phone, code);
-    if (r.ok) {
-        emit loginSucceeded(r.user);
-        status_->setText(QStringLiteral("登录成功"));
-    } else {
-        status_->setText(QStringLiteral("登录失败：") + r.message);
-    }
+    status_->setText(QStringLiteral("登录中…"));
+    service_->login(phone, code, [this](const LoginResult& r) {
+        if (r.ok) {
+            emit loginSucceeded(r.user);
+            status_->setText(QStringLiteral("登录成功"));
+        } else {
+            status_->setText(QStringLiteral("登录失败：") + r.message);
+        }
+    });
 }
 
 }  // namespace client

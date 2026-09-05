@@ -1,13 +1,9 @@
 #include "HttpJsonClient.h"
 
-#include <QEventLoop>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QTimer>
 #include <QUrl>
 
 namespace ncs {
@@ -16,57 +12,56 @@ namespace client {
 HttpJsonClient::HttpJsonClient(QString baseUrl)
     : baseUrl_(std::move(baseUrl)) {}
 
-HttpJsonClient::Reply HttpJsonClient::send(const QByteArray& verb,
-                                           const QString& path,
-                                           const QJsonObject* json) const {
-    Reply out;
-    QNetworkAccessManager mgr;
+void HttpJsonClient::send(const QByteArray& verb, const QString& path,
+                          const QJsonObject* json, ReplyCallback done) {
     QNetworkRequest req(QUrl(baseUrl_ + path));
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/json"));
 
     QNetworkReply* reply = nullptr;
-    if (verb == "POST" && json) {
-        reply = mgr.post(req, QJsonDocument(*json).toJson(QJsonDocument::Compact));
-    } else {
-        reply = mgr.get(req);
-    }
+    if (verb == "POST" && json)
+        reply = mgr_.post(req, QJsonDocument(*json).toJson(QJsonDocument::Compact));
+    else
+        reply = mgr_.get(req);
 
-    QEventLoop loop;
-    QTimer timer;
-    timer.setSingleShot(true);
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
-    timer.start(4000);
-    loop.exec();
-
-    if (reply->error() != QNetworkReply::NoError) {
-        out.error = reply->errorString();
-        reply->deleteLater();
-        return out;
-    }
-    out.ok = true;
-    out.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    const QByteArray data = reply->readAll();
-    if (!data.isEmpty()) {
-        QJsonParseError err;
-        const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
-        if (err.error == QJsonParseError::NoError)
-            out.root = doc.isArray()
-                           ? QJsonValue(doc.array())
-                           : QJsonValue(doc.object());
-    }
-    reply->deleteLater();
-    return out;
+    QObject::connect(reply, &QNetworkReply::finished,
+                     [reply, done = std::move(done)] {
+                         Reply out;
+                         if (reply->error() != QNetworkReply::NoError) {
+                             out.transportOk = false;
+                             out.error = reply->errorString();
+                         } else {
+                             out.transportOk = true;
+                             out.status = reply->attribute(
+                                 QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                             const QByteArray data = reply->readAll();
+                             QJsonParseError err;
+                             const QJsonDocument doc =
+                                 QJsonDocument::fromJson(data, &err);
+                             if (err.error == QJsonParseError::NoError &&
+                                 doc.isObject()) {
+                                 const QJsonObject o = doc.object();
+                                 out.code = o.value(QStringLiteral("code")).toInt(-1);
+                                 out.message =
+                                     o.value(QStringLiteral("message")).toString();
+                                 out.data = o.value(QStringLiteral("data"));
+                             } else {
+                                 out.code = -1;
+                                 out.error = QStringLiteral("响应非 JSON");
+                             }
+                         }
+                         reply->deleteLater();
+                         done(out);
+                     });
 }
 
-HttpJsonClient::Reply HttpJsonClient::get(const QString& path) const {
-    return send("GET", path, nullptr);
+void HttpJsonClient::get(const QString& path, ReplyCallback done) {
+    send("GET", path, nullptr, std::move(done));
 }
 
-HttpJsonClient::Reply HttpJsonClient::post(const QString& path,
-                                           const QJsonObject& json) const {
-    return send("POST", path, &json);
+void HttpJsonClient::post(const QString& path, const QJsonObject& json,
+                          ReplyCallback done) {
+    send("POST", path, &json, std::move(done));
 }
 
 }  // namespace client

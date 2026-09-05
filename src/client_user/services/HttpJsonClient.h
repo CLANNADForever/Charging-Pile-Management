@@ -1,9 +1,12 @@
-// 极简同步 HTTP JSON 客户端(Qt QNetworkAccessManager，阻塞+超时)。
-// User/Station/Order 等服务共用，避免重复实现。
+// 异步 HTTP JSON 客户端(Qt QNetworkAccessManager)。请求由事件循环驱动，
+// 结果经回调投递到创建线程 —— 不阻塞调用方(充电页实时刷新依赖此设计)。
 #ifndef NCS_CLIENT_SERVICES_HTTPJSONCLIENT_H
 #define NCS_CLIENT_SERVICES_HTTPJSONCLIENT_H
 
+#include <functional>
+
 #include <QJsonValue>
+#include <QNetworkAccessManager>
 #include <QString>
 
 class QJsonObject;
@@ -16,22 +19,27 @@ public:
     explicit HttpJsonClient(QString baseUrl);
 
     struct Reply {
-        bool ok = false;   // 网络层/超时是否正常
+        bool transportOk = false;  // 网络层是否成功
         int status = 0;
-        QJsonValue root;   // 响应 JSON(对象或数组)
-        QString error;
+        int code = -1;             // 统一信封 code
+        QString message;
+        QJsonValue data;           // 信封 data
+        QString error;             // 网络错误描述
     };
+    using ReplyCallback = std::function<void(const Reply&)>;
 
-    Reply get(const QString& path) const;
-    Reply post(const QString& path, const QJsonObject& json) const;
+    void get(const QString& path, ReplyCallback done);
+    void post(const QString& path, const QJsonObject& json,
+              ReplyCallback done);
 
     const QString& baseUrl() const { return baseUrl_; }
 
 private:
-    Reply send(const QByteArray& verb, const QString& path,
-               const QJsonObject* json) const;
+    void send(const QByteArray& verb, const QString& path,
+              const QJsonObject* json, ReplyCallback done);
 
     QString baseUrl_;
+    QNetworkAccessManager mgr_;
 };
 
 }  // namespace client

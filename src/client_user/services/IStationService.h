@@ -1,7 +1,10 @@
-// 站/桩查询服务接口：找桩页只依赖本接口(先 HTTP 真后端；UI 测试可用假实现)。
+// 站/桩查询服务接口(异步)。error 非空表示失败。
 #ifndef NCS_CLIENT_SERVICES_ISTATIONSERVICE_H
 #define NCS_CLIENT_SERVICES_ISTATIONSERVICE_H
 
+#include <functional>
+
+#include <QString>
 #include <QVector>
 
 #include "entities.h"
@@ -9,11 +12,16 @@
 namespace ncs {
 namespace client {
 
+using StationListCallback =
+    std::function<void(const QVector<ncs::Station>&, const QString& error)>;
+using DeviceListCallback =
+    std::function<void(const QVector<ncs::Device>&, const QString& error)>;
+
 class IStationService {
 public:
     virtual ~IStationService() = default;
-    virtual QVector<ncs::Station> listStations() = 0;              // 空=失败/无
-    virtual QVector<ncs::Device> listDevices(int stationId) = 0;
+    virtual void listStations(StationListCallback done) = 0;
+    virtual void listDevices(int stationId, DeviceListCallback done) = 0;
 };
 
 }  // namespace client

@@ -122,11 +122,12 @@ void TstNcs::orderCompleted() {
 
 void TstNcs::invalidPhoneFails() {
     ncs::client::MockUserService svc;
-    auto r = svc.requestCode(QStringLiteral("123"));
+    ncs::client::LoginResult r;
+    svc.requestCode(QStringLiteral("123"), [&](const ncs::client::LoginResult& x) { r = x; });
     QVERIFY(!r.ok);
-    r = svc.requestCode(QStringLiteral("23800138000"));
+    svc.requestCode(QStringLiteral("23800138000"), [&](const ncs::client::LoginResult& x) { r = x; });
     QVERIFY(!r.ok);
-    r = svc.requestCode(QStringLiteral("13800138000"));
+    svc.requestCode(QStringLiteral("13800138000"), [&](const ncs::client::LoginResult& x) { r = x; });
     QVERIFY(r.ok);
 }
 

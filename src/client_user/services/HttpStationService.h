@@ -14,8 +14,8 @@ public:
     explicit HttpStationService(
         QString baseUrl = QStringLiteral("http://127.0.0.1:8080"));
 
-    QVector<ncs::Station> listStations() override;
-    QVector<ncs::Device> listDevices(int stationId) override;
+    void listStations(StationListCallback done) override;
+    void listDevices(int stationId, DeviceListCallback done) override;
 
 private:
     HttpJsonClient client_;

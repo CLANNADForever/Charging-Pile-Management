@@ -9,14 +9,15 @@
 namespace ncs {
 namespace client {
 
-// IUserService 的 HTTP 实现(同步，基于 HttpJsonClient)。
+// IUserService 的 HTTP 实现(异步，基于 HttpJsonClient，统一信封解析)。
 class HttpUserService : public IUserService {
 public:
     explicit HttpUserService(
         QString baseUrl = QStringLiteral("http://127.0.0.1:8080"));
 
-    LoginResult requestCode(const QString& phone) override;
-    LoginResult login(const QString& phone, const QString& code) override;
+    void requestCode(const QString& phone, LoginCallback done) override;
+    void login(const QString& phone, const QString& code,
+               LoginCallback done) override;
 
     const QString& baseUrl() const { return client_.baseUrl(); }
 

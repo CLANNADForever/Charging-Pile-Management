@@ -12,13 +12,16 @@ namespace client {
 
 class IStationService;
 
-// 找桩页(占位)：拉站列表展示，美观交给后续同学前端壳。进入页面时 refresh()。
+// 找桩页：列出站点；单击某站发 stationChosen，由 MainWindow 切到站内桩明细。
 class StationListPage : public QWidget {
     Q_OBJECT
 public:
     explicit StationListPage(IStationService* service, QWidget* parent = nullptr);
 
     void refresh();
+
+signals:
+    void stationChosen(int stationId);
 
 private:
     IStationService* service_ = nullptr;
