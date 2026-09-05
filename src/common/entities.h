@@ -36,6 +36,7 @@ enum class DeviceState : int {
     Charging = 1,  // 充电中
     Fault = 2,     // 故障
     Reserved = 3,  // 已被预约占用(占桩)
+    Rebooting = 4, // 重启中(远程重启流转，B2)
 };
 
 // 充电桩类型(快充/慢充)

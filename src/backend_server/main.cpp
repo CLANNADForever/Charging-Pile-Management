@@ -13,12 +13,15 @@ int main(int argc, char* argv[]) {
     int httpPort = 8080;
     int simPort = 18000;
     int reserveTimeoutSec = 300;  // 预约超时释放(秒)
+    int rebootSec = 5;            // 远程重启自动恢复超时(秒)
     if (argc > 2)
         httpPort = std::atoi(argv[2]);
     if (argc > 3)
         simPort = std::atoi(argv[3]);
     if (argc > 4)
         reserveTimeoutSec = std::atoi(argv[4]);
+    if (argc > 5)
+        rebootSec = std::atoi(argv[5]);
 
     ncs::backend::BackendApp app(db);
     if (!app.init()) {
@@ -26,6 +29,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     app.startReserveSweeper(reserveTimeoutSec);  // start sweeper: auto-release expired reservations
+    app.startRestartSweeper(rebootSec);          // 重启中桩超时未上报则强制恢复
     if (!app.startSimListener(simPort)) {
         std::fprintf(stderr, "[WARN] 模拟器 TCP 监听失败 port=%d(继续 HTTP)\n",
                      simPort);

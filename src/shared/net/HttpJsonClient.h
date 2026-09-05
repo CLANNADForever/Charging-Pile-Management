@@ -5,7 +5,9 @@
 
 #include <functional>
 
+#include <QByteArray>
 #include <QJsonValue>
+#include <QMap>
 #include <QNetworkAccessManager>
 #include <QString>
 
@@ -35,6 +37,9 @@ public:
                ReplyCallback done);
     void sendDelete(const QString& path, ReplyCallback done);
 
+    // 追加默认请求头(如 Authorization)，之后所有请求自动携带
+    void setDefaultHeader(const QByteArray& name, const QByteArray& value);
+
     const QString& baseUrl() const { return baseUrl_; }
 
 private:
@@ -42,6 +47,7 @@ private:
               const QJsonObject* json, ReplyCallback done);
 
     QString baseUrl_;
+    QMap<QByteArray, QByteArray> defaultHeaders_;
     QNetworkAccessManager mgr_;
 };
 

@@ -16,6 +16,7 @@ struct Heartbeat {
     double powerKw = 0.0;
     double energyKwh = 0.0;
     long long tsMs = 0;
+    int simState = -1;   // 0 正常/1 充电 2 故障 4 重启中(-1 无)
 };
 
 class IHeartbeatSink {

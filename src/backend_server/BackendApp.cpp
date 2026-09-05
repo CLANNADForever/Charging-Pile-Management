@@ -11,9 +11,11 @@
 #include <cstring>
 #include <string>
 
+#include <QDate>
 #include <QDir>
 #include <QFile>
 #include <QDateTime>
+#include <QRandomGenerator>
 
 #include "billing.h"
 #include "phone.h"
@@ -30,11 +32,17 @@ using nlohmann::json;
 namespace {
 constexpr int kCodeOk = 0;
 constexpr int kCodeBiz = 1;
-constexpr int kCodeBadReq = 2;
+constexpr int kCodeBadReq = 2;  // 400
+constexpr int kCodeUnauth = 3;  // 401 未认证
+constexpr int kCodeForbid = 4;  // 403 无权限
 
 void reply(httplib::Response& res, int code, const char* msg, json data) {
     if (code == kCodeBadReq)
         res.status = 400;
+    else if (code == kCodeUnauth)
+        res.status = 401;
+    else if (code == kCodeForbid)
+        res.status = 403;
     else
         res.status = 200;
     json j{{"code", code}, {"message", msg}, {"data", std::move(data)}};
@@ -94,6 +102,95 @@ json orderToJson(const ncs::Order& o) {
 }
 }  // namespace
 
+namespace {
+
+std::string bearerToken(const httplib::Request& req) {
+    const std::string h = req.get_header_value("Authorization");
+    static const std::string kPre = "Bearer ";
+    if (h.size() > kPre.size() && h.compare(0, kPre.size(), kPre) == 0)
+        return h.substr(kPre.size());
+    return std::string();
+}
+
+// 角色门禁：super 全部；operator 仅设备远程重启；viewer 只读
+bool canDo(const QString& role, const char* perm) {
+    if (role == QLatin1String("super"))
+        return true;
+    if (role == QLatin1String("operator") &&
+        QString::fromLatin1(perm) == QLatin1String("device.restart"))
+        return true;
+    return false;
+}
+
+int intParam(const httplib::Request& req, const char* name, int dflt) {
+    const std::string v = req.get_param_value(name);
+    return v.empty() ? dflt : std::atoi(v.c_str());
+}
+
+QString dayStartIso(const QDate& d) {
+    return QStringLiteral("%1T00:00:00").arg(d.toString(Qt::ISODate));
+}
+
+json adminStationToJson(const ncs::Station& st, int online) {
+    const int total = st.totalPiles;
+    int offline = total - online;
+    if (offline < 0)
+        offline = 0;
+    const int rate = total > 0 ? qRound(100.0 * online / total) : 0;
+    json j = stationToJson(st);
+    j["online"] = online;
+    j["offline"] = offline;
+    j["online_rate"] = rate;  // 0-100 整数
+    return j;
+}
+
+json adminDeviceToJson(const DeviceRow& r, const SimLive& live) {
+    return json{{"id", r.dev.id},
+                {"station_id", r.dev.stationId},
+                {"station_name", r.stationName.toStdString()},
+                {"type", static_cast<int>(r.dev.type)},
+                {"state", static_cast<int>(r.dev.state)},
+                {"online", live.online},
+                {"power_kw", live.online ? live.powerKw : 0.0},
+                {"energy_kwh", live.online ? live.energyKwh : 0.0},
+                {"last_ts", live.lastTsMs},
+                {"sessions", r.sessions},
+                {"charging_sec", r.chargeSec}};
+}
+
+json dailyToJson(const DailyRevenue& d) {
+    return json{{"day", d.day.toStdString()},
+                {"revenue_cents", d.cents},
+                {"orders", d.orders},
+                {"energy_kwh", d.energyKwh}};
+}
+
+json auditToJson(const AuditRow& a) {
+    return json{{"id", a.id},
+                {"username", a.username.toStdString()},
+                {"action", a.action.toStdString()},
+                {"detail", a.detail.toStdString()},
+                {"result", a.result.toStdString()},
+                {"created_at",
+                 a.at.isValid()
+                     ? a.at.toUTC().toString(Qt::ISODate).toStdString()
+                     : std::string()}};
+}
+
+json deviceOpToJson(const DeviceOpRow& o) {
+    return json{{"id", o.id},
+                {"device_id", o.deviceId},
+                {"op_type", o.opType.toStdString()},
+                {"op_by", o.opBy.toStdString()},
+                {"detail", o.detail.toStdString()},
+                {"created_at",
+                 o.at.isValid()
+                     ? o.at.toUTC().toString(Qt::ISODate).toStdString()
+                     : std::string()}};
+}
+
+}  // namespace
+
 BackendApp::BackendApp(const QString& dbPath)
     : dbPath_(dbPath), auth_(&store_) {
     charge_ = std::make_unique<ChargeService>(
@@ -103,6 +200,7 @@ BackendApp::BackendApp(const QString& dbPath)
 }
 
 BackendApp::~BackendApp() {
+    stopRestartSweeper();
     stopReserveSweeper();
     stopSimListener();
 }
@@ -448,7 +546,11 @@ void BackendApp::registerRoutes() {
                           json{{"url", (QStringLiteral("/uploads/") + base).toStdString()}});
               });
 
-    // ---------- 管理端 (B1) ----------
+    // ========== 管理端 (B2：三角色 RBAC + 鉴权 + 审计) ==========
+    // 角色: super=全部; operator=只读+设备远程重启; viewer=只读。
+    // 除 login 外所有 /api/admin/* 需 Authorization: Bearer <token>。
+    // 信封 code: 0 成功 / 1 业务 / 2 参数(400) / 3 未认证(401) / 4 无权限(403)。
+
     srv_.Post("/api/admin/login",
               [this](const httplib::Request& req, httplib::Response& res) {
                   QString user, pass;
@@ -460,27 +562,45 @@ void BackendApp::registerRoutes() {
                       reply(res, kCodeBadReq, "body 需 username/password", nullptr);
                       return;
                   }
-                  if (!store_.authenticateAdmin(user, pass)) {
+                  QString role;
+                  if (!store_.authenticateAdmin(user, pass, &role)) {
                       replyBizErr(res, QStringLiteral("账号或密码错误"));
                       return;
                   }
+                  const QString token = issueAdminToken(user, role);
+                  store_.appendAudit(user, QStringLiteral("login"),
+                                     QStringLiteral("管理员登录成功"), true);
                   replyOk(res, json{{"username", user.toStdString()},
-                                    {"role", "admin"}});
+                                    {"role", role.toStdString()},
+                                    {"token", token.toStdString()}});
               });
 
+    // 用户查询(可加状态筛选: 0 全部/1 正常/2 冻结)
     srv_.Get("/api/admin/users",
              [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
                  const QString phone =
                      QString::fromStdString(req.get_param_value("phone"));
-                 const auto users = store_.searchUsers(phone);
+                 const int status = intParam(req, "status", 0);
+                 const auto users = store_.searchUsers(phone, status);
                  json arr = json::array();
                  for (const auto& u : users)
                      arr.push_back(userToJson(u));
                  replyOk(res, std::move(arr));
              });
 
+    // 冻结/解冻(仅 super；自动审计)
     srv_.Post(R"(/api/admin/users/(\d+)/freeze)",
               [this](const httplib::Request& req, httplib::Response& res) {
+                  QString user, role;
+                  if (!requireAdmin(req, res, &user, &role))
+                      return;
+                  if (!canDo(role, "user.freeze")) {
+                      reply(res, kCodeForbid, "无权限执行该操作(仅超级管理员)", nullptr);
+                      return;
+                  }
                   if (req.matches.size() < 2) {
                       reply(res, kCodeBadReq, "缺用户 id", nullptr);
                       return;
@@ -491,15 +611,60 @@ void BackendApp::registerRoutes() {
                   } catch (...) {
                   }
                   const int id = std::stoi(req.matches[1]);
-                  if (!store_.setUserStatus(id, frozen ? 1 : 0)) {
+                  const bool st = store_.setUserStatus(id, frozen ? 1 : 0);
+                  store_.appendAudit(
+                      user, QStringLiteral("user.freeze"),
+                      QStringLiteral("%1用户 #%2")
+                          .arg(frozen ? QStringLiteral("冻结")
+                                      : QStringLiteral("解冻"))
+                          .arg(id),
+                      st);
+                  if (!st) {
                       replyBizErr(res, QStringLiteral("用户不存在或保存失败"));
                       return;
                   }
                   replyOk(res, nullptr);
               });
 
+    // 站列表(带在线率，供资产管理/复杂筛选)
+    srv_.Get("/api/admin/stations",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const QString q =
+                     QString::fromStdString(req.get_param_value("q")).trimmed();
+                 const auto devSt = store_.listDeviceStations();
+                 std::map<int, int> devToSt;
+                 for (const auto& p : devSt)
+                     devToSt[p.first] = p.second;
+                 std::map<int, int> stOnline;
+                 for (const SimLive& l : simLiveSnapshot()) {
+                     const auto it = devToSt.find(l.deviceId);
+                     if (it != devToSt.end())
+                         ++stOnline[it->second];
+                 }
+                 json arr = json::array();
+                 for (const auto& st : store_.listStations()) {
+                     if (!q.isEmpty() &&
+                         !st.name.contains(q, Qt::CaseInsensitive) &&
+                         !st.address.contains(q, Qt::CaseInsensitive))
+                         continue;
+                     arr.push_back(adminStationToJson(st, stOnline[st.id]));
+                 }
+                 replyOk(res, std::move(arr));
+             });
+
+    // 建站(仅 super；审计)
     srv_.Post("/api/admin/stations",
               [this](const httplib::Request& req, httplib::Response& res) {
+                  QString user, role;
+                  if (!requireAdmin(req, res, &user, &role))
+                      return;
+                  if (!canDo(role, "station.write")) {
+                      reply(res, kCodeForbid, "无权限执行该操作(仅超级管理员)", nullptr);
+                      return;
+                  }
                   QString name, address;
                   double lat = 0, lng = 0;
                   ncs::MoneyCents price = 0;
@@ -521,15 +686,27 @@ void BackendApp::registerRoutes() {
                   const int id = store_.createStation(
                       name.trimmed(), address.trimmed(), lat, lng,
                       qMax<ncs::MoneyCents>(0, price));
-                  if (id < 0) {
+                  const bool ok = id > 0;
+                  store_.appendAudit(user, QStringLiteral("station.create"),
+                                     QStringLiteral("新建站 %1").arg(name.trimmed()),
+                                     ok);
+                  if (!ok) {
                       replyBizErr(res, QStringLiteral("建站失败"));
                       return;
                   }
                   replyOk(res, json{{"id", id}});
               });
 
+    // 改站(仅 super；审计)
     srv_.Patch(R"(/api/admin/stations/(\d+))",
                [this](const httplib::Request& req, httplib::Response& res) {
+                   QString user, role;
+                   if (!requireAdmin(req, res, &user, &role))
+                       return;
+                   if (!canDo(role, "station.write")) {
+                       reply(res, kCodeForbid, "无权限执行该操作(仅超级管理员)", nullptr);
+                       return;
+                   }
                    if (req.matches.size() < 2) {
                        reply(res, kCodeBadReq, "缺站 id", nullptr);
                        return;
@@ -549,17 +726,28 @@ void BackendApp::registerRoutes() {
                        return;
                    }
                    const int id = std::stoi(req.matches[1]);
-                   if (!store_.updateStation(id, name.trimmed(), address.trimmed(),
-                                             lat, lng,
-                                             qMax<ncs::MoneyCents>(0, price))) {
+                   const bool ok = store_.updateStation(
+                       id, name.trimmed(), address.trimmed(), lat, lng,
+                       qMax<ncs::MoneyCents>(0, price));
+                   store_.appendAudit(user, QStringLiteral("station.update"),
+                                      QStringLiteral("修改站 #%1").arg(id), ok);
+                   if (!ok) {
                        replyBizErr(res, QStringLiteral("站不存在或保存失败"));
                        return;
                    }
                    replyOk(res, nullptr);
                });
 
+    // 删站(仅 super；审计；禁删保护)
     srv_.Delete(R"(/api/admin/stations/(\d+))",
                 [this](const httplib::Request& req, httplib::Response& res) {
+                    QString user, role;
+                    if (!requireAdmin(req, res, &user, &role))
+                        return;
+                    if (!canDo(role, "station.write")) {
+                        reply(res, kCodeForbid, "无权限执行该操作(仅超级管理员)", nullptr);
+                        return;
+                    }
                     if (req.matches.size() < 2) {
                         reply(res, kCodeBadReq, "缺站 id", nullptr);
                         return;
@@ -569,15 +757,26 @@ void BackendApp::registerRoutes() {
                         replyBizErr(res, QStringLiteral("站下仍有电桩，禁止删除"));
                         return;
                     }
-                    if (!store_.deleteStationById(id)) {
+                    const bool ok = store_.deleteStationById(id);
+                    store_.appendAudit(user, QStringLiteral("station.delete"),
+                                       QStringLiteral("删除站 #%1").arg(id), ok);
+                    if (!ok) {
                         replyBizErr(res, QStringLiteral("站不存在或删除失败"));
                         return;
                     }
                     replyOk(res, nullptr);
                 });
 
+    // 批量建桩(仅 super；审计；站存在校验+整批事务)
     srv_.Post(R"(/api/admin/stations/(\d+)/devices)",
               [this](const httplib::Request& req, httplib::Response& res) {
+                  QString user, role;
+                  if (!requireAdmin(req, res, &user, &role))
+                      return;
+                  if (!canDo(role, "device.write")) {
+                      reply(res, kCodeForbid, "无权限执行该操作(仅超级管理员)", nullptr);
+                      return;
+                  }
                   if (req.matches.size() < 2) {
                       reply(res, kCodeBadReq, "缺站 id", nullptr);
                       return;
@@ -599,15 +798,29 @@ void BackendApp::registerRoutes() {
                       return;
                   }
                   const int id = std::stoi(req.matches[1]);
-                  if (!store_.createDevices(id, type, count, powerKw)) {
-                      replyBizErr(res, QStringLiteral("站不存在或建桩失败"));
+                  const int cid = store_.createDevices(id, type, count, powerKw);
+                  store_.appendAudit(
+                      user, QStringLiteral("device.create"),
+                      QStringLiteral("向站 #%1 批量建桩 %2 台").arg(id).arg(count),
+                      cid > 0);
+                  if (cid < 0) {
+                      replyBizErr(res, cid == -1 ? QStringLiteral("站不存在，无法建桩")
+                                                 : QStringLiteral("建桩失败(已整批回滚)"));
                       return;
                   }
                   replyOk(res, json{{"created", count}});
               });
 
+    // 删桩(仅 super；审计；非空闲拒绝 + 计数事务回退)
     srv_.Delete(R"(/api/admin/devices/(\d+))",
                 [this](const httplib::Request& req, httplib::Response& res) {
+                    QString user, role;
+                    if (!requireAdmin(req, res, &user, &role))
+                        return;
+                    if (!canDo(role, "device.write")) {
+                        reply(res, kCodeForbid, "无权限执行该操作(仅超级管理员)", nullptr);
+                        return;
+                    }
                     if (req.matches.size() < 2) {
                         reply(res, kCodeBadReq, "缺桩 id", nullptr);
                         return;
@@ -622,8 +835,162 @@ void BackendApp::registerRoutes() {
                         replyBizErr(res, QStringLiteral("桩使用中(非空闲)，禁止删除"));
                         return;
                     }
+                    store_.appendAudit(user, QStringLiteral("device.delete"),
+                                       QStringLiteral("删除桩 #%1").arg(id), true);
+                    forgetDevice(id);
                     replyOk(res, nullptr);
                 });
+
+    // 设备列表(复杂筛选 + 实时在线/功率/电量 + 累计次数/时长，带分页)
+    srv_.Get("/api/admin/devices",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 DeviceFilter f;
+                 f.stationId = intParam(req, "station_id", -1);
+                 f.type = intParam(req, "type", -1);
+                 f.state = intParam(req, "state", -1);
+                 f.q = QString::fromStdString(req.get_param_value("q")).trimmed();
+                 int page = std::max(1, intParam(req, "page", 1));
+                 int pageSize = qBound(1, intParam(req, "page_size", 50), 200);
+                 const int offset = (page - 1) * pageSize;
+                 std::map<int, SimLive> liveMap;
+                 for (const SimLive& l : simLiveSnapshot())
+                     liveMap[l.deviceId] = l;
+                 QVector<DeviceRow> rows;
+                 store_.listDevicesAdmin(f, pageSize, offset, &rows);
+                 json arr = json::array();
+                 for (const auto& r : rows) {
+                     SimLive blank;
+                     const auto it = liveMap.find(r.dev.id);
+                     arr.push_back(adminDeviceToJson(r, it != liveMap.end() ? it->second : blank));
+                 }
+                 replyOk(res,
+                         json{{"items", std::move(arr)},
+                              {"total", store_.countDevicesAdmin(f)}});
+             });
+
+    // 远程重启(故障→重启中→恢复；super/operator 可操作)
+    srv_.Post(R"(/api/admin/devices/(\d+)/restart)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  QString user, role;
+                  if (!requireAdmin(req, res, &user, &role))
+                      return;
+                  if (!canDo(role, "device.restart")) {
+                      reply(res, kCodeForbid, "无权限执行远程重启(需运维角色以上)", nullptr);
+                      return;
+                  }
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺桩 id", nullptr);
+                      return;
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  QString err;
+                  if (!adminRestartDevice(id, user, &err)) {
+                      replyBizErr(res, err);
+                      return;
+                  }
+                  replyOk(res, json{{"state", static_cast<int>(ncs::DeviceState::Rebooting)}});
+              });
+
+    // 运维日志 / 审计日志(任意已登录角色可看；分页)
+    srv_.Get("/api/admin/logs/ops",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const int page = std::max(1, intParam(req, "page", 1));
+                 const int pageSize = qBound(1, intParam(req, "page_size", 50), 200);
+                 const int offset = (page - 1) * pageSize;
+                 const auto items = store_.listDeviceOps(pageSize, offset);
+                 json arr = json::array();
+                 for (const auto& o : items)
+                     arr.push_back(deviceOpToJson(o));
+                 replyOk(res, json{{"items", std::move(arr)},
+                                   {"total", store_.countDeviceOps()}});
+             });
+
+    srv_.Get("/api/admin/logs/audit",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const int page = std::max(1, intParam(req, "page", 1));
+                 const int pageSize = qBound(1, intParam(req, "page_size", 50), 200);
+                 const int offset = (page - 1) * pageSize;
+                 const auto items = store_.listAudit(pageSize, offset);
+                 json arr = json::array();
+                 for (const auto& a : items)
+                     arr.push_back(auditToJson(a));
+                 replyOk(res, json{{"items", std::move(arr)},
+                                   {"total", store_.countAudit()}});
+             });
+
+    // 经营统计概览(字段全在后端按订单/设备现算，前端壳可整体替换)
+    srv_.Get("/api/admin/stats/overview",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const QDate today = QDateTime::currentDateTimeUtc().date();
+                 const QString t0 = dayStartIso(today);
+                 const QString t1 = dayStartIso(today.addDays(1));
+                 const QString m0 =
+                     dayStartIso(QDate(today.year(), today.month(), 1));
+                 const RevenueAgg todayAgg = store_.revenueWindow(t0, t1);
+                 const RevenueAgg monthAgg = store_.revenueWindow(m0, t1);
+                 const RevenueAgg totalAgg = store_.revenueWindow(QString(), QString());
+                 auto aggJson = [](const RevenueAgg& a) {
+                     return json{{"revenue_cents", a.cents},
+                                 {"orders", a.orders},
+                                 {"energy_kwh", a.energyKwh}};
+                 };
+                 const auto counts = store_.deviceStateCounts();
+                 json health{{"idle", counts[0]},
+                             {"charging", counts[1]},
+                             {"fault", counts[2]},
+                             {"reserved", counts[3]},
+                             {"rebooting", counts[4]}};
+                 const auto devSt = store_.listDeviceStations();
+                 std::map<int, int> devToSt;
+                 for (const auto& p : devSt)
+                     devToSt[p.first] = p.second;
+                 std::map<int, int> stOnline;
+                 for (const SimLive& l : simLiveSnapshot()) {
+                     const auto it = devToSt.find(l.deviceId);
+                     if (it != devToSt.end())
+                         ++stOnline[it->second];
+                 }
+                 json stArr = json::array();
+                 for (const auto& st : store_.listStations())
+                     stArr.push_back(adminStationToJson(st, stOnline[st.id]));
+                 int devTotal = 0;
+                 for (const int c : counts)
+                     devTotal += c;
+                 replyOk(res, json{{"today", aggJson(todayAgg)},
+                                   {"month", aggJson(monthAgg)},
+                                   {"total", aggJson(totalAgg)},
+                                   {"device_health", health},
+                                   {"devices_total", devTotal},
+                                   {"devices_online",
+                                    static_cast<long long>(simLiveSnapshot().size())},
+                                   {"stations", std::move(stArr)}});
+             });
+
+    // 按日营收(近 N 天，含今天；供折线/表格)
+    srv_.Get("/api/admin/stats/daily",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const int days = qBound(1, intParam(req, "days", 7), 90);
+                 const auto rows = store_.dailyRevenue(days);
+                 json arr = json::array();
+                 for (const auto& d : rows)
+                     arr.push_back(dailyToJson(d));
+                 replyOk(res, std::move(arr));
+             });
 }
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------
 
@@ -702,11 +1069,16 @@ void BackendApp::handleSimConnection(int fd) {
                     hb.powerKw = j.value("power_kw", 0.0);
                     hb.energyKwh = j.value("energy_kwh", 0.0);
                     hb.tsMs = j.value("ts", 0LL);
+                    hb.simState = j.value("sim_state", -1);
+                    const long long nowMs = QDateTime::currentMSecsSinceEpoch();
                     {
                         std::lock_guard<std::mutex> lk(simMu_);
                         deviceEnergy_[hb.deviceId] = hb.energyKwh;
+                        devicePower_[hb.deviceId] = hb.powerKw;
+                        deviceLastTs_[hb.deviceId] = hb.tsMs > 0 ? hb.tsMs : nowMs;
                     }
                     sink_.onHeartbeat(hb);
+                    applySimState(hb.deviceId, hb.simState);
                 }
             } catch (...) {
             }
@@ -718,19 +1090,29 @@ void BackendApp::handleSimConnection(int fd) {
 
 void BackendApp::registerSimDevices(int fd, const std::vector<int>& ids) {
     std::lock_guard<std::mutex> lk(simMu_);
+    const long long nowMs = QDateTime::currentMSecsSinceEpoch();
     for (const int id : ids) {
         deviceFd_[id] = fd;
         deviceEnergy_[id] = 0.0;
+        devicePower_[id] = 0.0;
+        deviceLastTs_[id] = nowMs;
+        deviceSimState_[id] = -1;
     }
 }
 
 void BackendApp::unregisterSimFd(int fd) {
     std::lock_guard<std::mutex> lk(simMu_);
     for (auto it = deviceFd_.begin(); it != deviceFd_.end();) {
-        if (it->second == fd)
-            it = deviceFd_.erase(it);
-        else
+        if (it->second != fd) {
             ++it;
+            continue;
+        }
+        const int id = it->first;
+        deviceEnergy_.erase(id);
+        devicePower_.erase(id);
+        deviceLastTs_.erase(id);
+        deviceSimState_.erase(id);
+        it = deviceFd_.erase(it);
     }
 }
 
@@ -750,6 +1132,239 @@ double BackendApp::simEnergy(int deviceId) const {
     const auto it = deviceEnergy_.find(deviceId);
     return it == deviceEnergy_.end() ? -1.0 : it->second;
 }
+
+bool BackendApp::sendSimRestart(int deviceId) {
+    std::lock_guard<std::mutex> lk(simMu_);
+    const auto it = deviceFd_.find(deviceId);
+    if (it == deviceFd_.end())
+        return false;
+    const json j{{"cmd", "restart"}, {"device_id", deviceId}};
+    const std::string line = j.dump() + "\n";
+    const ssize_t n = send(it->second, line.data(), line.size(), MSG_NOSIGNAL);
+    return n >= 0;
+}
+
+void BackendApp::forgetDevice(int deviceId) {
+    std::lock_guard<std::mutex> lk(simMu_);
+    deviceFd_.erase(deviceId);
+    deviceEnergy_.erase(deviceId);
+    devicePower_.erase(deviceId);
+    deviceLastTs_.erase(deviceId);
+    deviceSimState_.erase(deviceId);
+}
+
+QVector<SimLive> BackendApp::simLiveSnapshot() const {
+    QVector<SimLive> out;
+    std::lock_guard<std::mutex> lk(simMu_);
+    out.reserve(static_cast<int>(deviceFd_.size()));
+    for (const auto& kv : deviceFd_) {
+        SimLive l;
+        l.deviceId = kv.first;
+        l.online = true;
+        const auto pe = devicePower_.find(kv.first);
+        if (pe != devicePower_.end())
+            l.powerKw = pe->second;
+        const auto en = deviceEnergy_.find(kv.first);
+        if (en != deviceEnergy_.end())
+            l.energyKwh = en->second;
+        const auto ts = deviceLastTs_.find(kv.first);
+        if (ts != deviceLastTs_.end())
+            l.lastTsMs = ts->second;
+        out.push_back(l);
+    }
+    return out;
+}
+
+QString BackendApp::issueAdminToken(const QString& username,
+                                    const QString& role) {
+    QString token;
+    token.reserve(64);
+    for (int i = 0; i < 32; ++i) {
+        token += QStringLiteral("%1")
+                     .arg(QRandomGenerator::global()->bounded(256), 2, 16,
+                          QLatin1Char('0'));
+    }
+    std::lock_guard<std::mutex> lk(sessionMu_);
+    sessions_[token] = Session{username, role};
+    return token;
+}
+
+bool BackendApp::adminSession(const QString& token, QString* username,
+                              QString* role) const {
+    if (token.isEmpty())
+        return false;
+    std::lock_guard<std::mutex> lk(sessionMu_);
+    const auto it = sessions_.find(token);
+    if (it == sessions_.end())
+        return false;
+    if (username)
+        *username = it->second.username;
+    if (role)
+        *role = it->second.role;
+    return true;
+}
+
+bool BackendApp::requireAdmin(const httplib::Request& req,
+                              httplib::Response& res, QString* username,
+                              QString* role) {
+    const QString token = QString::fromStdString(bearerToken(req));
+    if (!adminSession(token, username, role)) {
+        reply(res, kCodeUnauth, "未登录或登录已过期，请重新登录", nullptr);
+        return false;
+    }
+    return true;
+}
+
+// 心跳驱动的故障/恢复流转(仅设备自主侧，不动业务进行中的桩)
+void BackendApp::applySimState(int deviceId, int simState) {
+    if (simState < 0)
+        return;
+    {
+        std::lock_guard<std::mutex> lk(simMu_);
+        const auto it = deviceSimState_.find(deviceId);
+        if (it != deviceSimState_.end() && it->second == simState)
+            return;
+    }
+    if (!store_.beginTx())  // 服务忙则下个心跳重试
+        return;
+    ncs::Device d;
+    bool changed = false;
+    QString op, detail;
+    if (store_.getDeviceById(deviceId, &d)) {
+        if (simState == 2) {  // 设备自主上报故障
+            if (d.state == ncs::DeviceState::Idle) {
+                store_.setDeviceState(deviceId,
+                                      static_cast<int>(ncs::DeviceState::Fault));
+                store_.adjustStationFree(d.stationId, -1);
+                changed = true;
+                op = QStringLiteral("fault");
+                detail = QStringLiteral("设备上报故障");
+            }
+            // Reserved/Charging 中忽略，避免破坏进行中订单
+        } else if (simState == 4) {
+            if (d.state == ncs::DeviceState::Fault)
+                store_.setDeviceState(
+                    deviceId, static_cast<int>(ncs::DeviceState::Rebooting));
+            // 运维日志由 adminRestartDevice 记录，不在此重复
+        } else if (d.state == ncs::DeviceState::Fault) {
+            store_.setDeviceState(deviceId,
+                                  static_cast<int>(ncs::DeviceState::Idle));
+            store_.adjustStationFree(d.stationId, 1);
+            changed = true;
+            op = QStringLiteral("recover");
+            detail = QStringLiteral("设备自愈恢复正常");
+        } else if (d.state == ncs::DeviceState::Rebooting) {
+            store_.setDeviceState(deviceId,
+                                  static_cast<int>(ncs::DeviceState::Idle));
+            store_.adjustStationFree(d.stationId, 1);
+            changed = true;
+            op = QStringLiteral("recover");
+            detail = QStringLiteral("远程重启成功，恢复正常");
+            std::lock_guard<std::mutex> lk(rebootingMu_);
+            rebootingSince_.erase(deviceId);
+        }
+    }
+    if (changed)
+        store_.appendDeviceOp(deviceId, op, QString(), detail);
+    store_.commitTx();
+    {
+        std::lock_guard<std::mutex> lk(simMu_);
+        deviceSimState_[deviceId] = simState;
+    }
+}
+
+bool BackendApp::adminRestartDevice(int deviceId, const QString& opBy,
+                                    QString* err) {
+    ncs::Device d;
+    if (!store_.getDeviceById(deviceId, &d)) {
+        if (err)
+            *err = QStringLiteral("桩不存在");
+        return false;
+    }
+    if (d.state != ncs::DeviceState::Fault) {
+        if (err)
+            *err = QStringLiteral("仅故障桩可远程重启");
+        return false;
+    }
+    if (!store_.beginTx()) {
+        if (err)
+            *err = QStringLiteral("服务繁忙，请稍后再试");
+        return false;
+    }
+    if (!store_.setDeviceState(deviceId,
+                               static_cast<int>(ncs::DeviceState::Rebooting))) {
+        store_.rollbackTx();
+        if (err)
+            *err = QStringLiteral("置重启态失败");
+        return false;
+    }
+    store_.appendDeviceOp(deviceId, QStringLiteral("restart"), opBy,
+                          QStringLiteral("对故障桩下发远程重启"));
+    store_.commitTx();
+    {
+        std::lock_guard<std::mutex> lk(rebootingMu_);
+        rebootingSince_[deviceId] =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+    }
+    store_.appendAudit(opBy, QStringLiteral("device.restart"),
+                       QStringLiteral("重启桩 #%1").arg(deviceId), true);
+    sendSimRestart(deviceId);  // 在线则即时下发；离线走超时强制恢复
+    return true;
+}
+
+void BackendApp::restartLoop(int rebootSec) {
+    const long long timeoutMs = static_cast<long long>(rebootSec) * 1000LL;
+    while (restartRunning_.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::vector<int> expired;
+        {
+            std::lock_guard<std::mutex> lk(rebootingMu_);
+            const long long now =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count();
+            for (const auto& kv : rebootingSince_)
+                if (now - kv.second >= timeoutMs)
+                    expired.push_back(kv.first);
+        }
+        for (const int id : expired) {
+            if (!store_.beginTx())
+                continue;
+            ncs::Device d;
+            if (!store_.getDeviceById(id, &d) ||
+                d.state != ncs::DeviceState::Rebooting) {
+                store_.rollbackTx();
+                std::lock_guard<std::mutex> lk(rebootingMu_);
+                rebootingSince_.erase(id);
+                continue;
+            }
+            store_.setDeviceState(id, static_cast<int>(ncs::DeviceState::Idle));
+            store_.adjustStationFree(d.stationId, 1);
+            store_.appendDeviceOp(id, QStringLiteral("recover"), QString(),
+                                  QStringLiteral("重启超时未收到设备上报，强制恢复空闲"));
+            store_.commitTx();
+            std::lock_guard<std::mutex> lk(rebootingMu_);
+            rebootingSince_.erase(id);
+        }
+    }
+}
+
+bool BackendApp::startRestartSweeper(int rebootSec) {
+    if (restartRunning_.load())
+        return false;
+    restartRunning_.store(true);
+    restartThread_ = std::thread([this, rebootSec] { restartLoop(rebootSec); });
+    return true;
+}
+
+void BackendApp::stopRestartSweeper() {
+    restartRunning_.store(false);
+    if (restartThread_.joinable())
+        restartThread_.join();
+}
+
 bool BackendApp::startReserveSweeper(int timeoutSec) {
     if (!charge_ || sweepRunning_.load())
         return false;

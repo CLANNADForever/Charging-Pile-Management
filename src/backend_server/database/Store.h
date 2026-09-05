@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <QString>
 #include <QVector>
 
@@ -12,6 +13,48 @@ struct sqlite3;
 
 namespace ncs {
 namespace backend {
+
+// ---- B2 管理端查询行/参数结构 ----
+// 设备列表聚合行(累计充电次数/时长 = 按订单聚合，不冗余落库)
+struct DeviceRow {
+    ncs::Device dev;
+    QString stationName;
+    qint64 sessions = 0;       // 累计充电次数(已结束/已支付订单)
+    double chargeSec = 0.0;    // 累计充电时长(秒)
+};
+struct DeviceFilter {
+    int stationId = -1;        // -1=全部
+    int type = -1;             // -1=全部
+    int state = -1;            // -1=全部
+    QString q;                 // 桩号关键字(空=全部)
+};
+struct AuditRow {
+    int id = 0;
+    QString username;
+    QString action;
+    QString detail;
+    QString result;
+    QDateTime at;
+};
+struct DeviceOpRow {
+    int id = 0;
+    int deviceId = 0;
+    QString opType;   // fault/restart/recover
+    QString opBy;     // 执行人(设备自主为空)
+    QString detail;
+    QDateTime at;
+};
+struct RevenueAgg {
+    ncs::MoneyCents cents = 0;  // 应收合计(分)
+    qint64 orders = 0;          // 已支付订单数
+    double energyKwh = 0.0;     // 电量合计
+};
+struct DailyRevenue {
+    QString day;                // YYYY-MM-DD(UTC)
+    ncs::MoneyCents cents = 0;
+    qint64 orders = 0;
+    double energyKwh = 0.0;
+};
 
 // SQLite 持久层：SQLite C API + 互斥锁串行化。单方法原子；
 // 跨方法业务原子(预约/结算)由上层(ChargeService)再包一把锁。
@@ -63,9 +106,10 @@ public:
                                            int offset) const;
     qint64 countHistoryByPhone(const QString& phone) const;
     // 管理端：认证 / 风控 / 资产
-    bool authenticateAdmin(const QString& username,
-                           const QString& password) const;
-    QVector<ncs::User> searchUsers(const QString& phone) const;
+    bool authenticateAdmin(const QString& username, const QString& password,
+                           QString* roleOut = nullptr) const;
+    QVector<ncs::User> searchUsers(const QString& phone,
+                                   int statusFilter = 0) const;  // 0=全部 1=正常 2=冻结
     bool setUserStatus(int userId, int status);
     int createStation(const QString& name, const QString& address,
                       double lat, double lng, ncs::MoneyCents priceCents);
@@ -73,8 +117,29 @@ public:
                        double lat, double lng, ncs::MoneyCents priceCents);
     qint64 countDevicesByStation(int stationId) const;
     bool deleteStationById(int id);
-    bool createDevices(int stationId, int type, int count, double powerKw);
-    int deleteDeviceIfIdle(int id);  // 1=已删 0=占用 拒绝 -1=不存在
+    // 批量建桩：1=成功 -1=站不存在 -2=插桩失败 -3=计数更新失败(整批事务)
+    int createDevices(int stationId, int type, int count, double powerKw);
+    int deleteDeviceIfIdle(int id);  // 1=已删 0=占用 拒绝 -1=不存在(删桩+计数回退同一事务)
+
+    // B2：审计 / 运维日志
+    bool appendAudit(const QString& username, const QString& action,
+                     const QString& detail, bool ok);
+    QVector<AuditRow> listAudit(int limit, int offset) const;
+    qint64 countAudit() const;
+    bool appendDeviceOp(int deviceId, const QString& opType,
+                        const QString& opBy, const QString& detail);
+    QVector<DeviceOpRow> listDeviceOps(int limit, int offset) const;
+    qint64 countDeviceOps() const;
+
+    // B2：管理端列表聚合 / 统计
+    bool listDevicesAdmin(const DeviceFilter& f, int limit, int offset,
+                          QVector<DeviceRow>* rows) const;
+    qint64 countDevicesAdmin(const DeviceFilter& f) const;
+    RevenueAgg revenueWindow(const QString& fromIso,
+                             const QString& toIso) const;  // 已支付订单; 空串=不设界
+    QVector<DailyRevenue> dailyRevenue(int days) const;    // 含今天, 缺日补 0
+    QVector<int> deviceStateCounts() const;                // 下标=DeviceState 值
+    QVector<std::pair<int,int>> listDeviceStations() const; // (device_id, station_id)
 private:
     bool findLocked(const QString& phone, ncs::User* out) const;  // 调用方持锁
     bool insertUserLocked(const QString& phone);                  // 调用方持锁

@@ -17,6 +17,9 @@ void HttpJsonClient::send(const QByteArray& verb, const QString& path,
     QNetworkRequest req(QUrl(baseUrl_ + path));
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/json"));
+    for (auto it = defaultHeaders_.constBegin(); it != defaultHeaders_.constEnd();
+         ++it)
+        req.setRawHeader(it.key(), it.value());
 
     QNetworkReply* reply = nullptr;
     const QByteArray body =
@@ -59,6 +62,11 @@ void HttpJsonClient::send(const QByteArray& verb, const QString& path,
                          reply->deleteLater();
                          done(out);
                      });
+}
+
+void HttpJsonClient::setDefaultHeader(const QByteArray& name,
+                                   const QByteArray& value) {
+    defaultHeaders_.insert(name, value);
 }
 
 void HttpJsonClient::get(const QString& path, ReplyCallback done) {

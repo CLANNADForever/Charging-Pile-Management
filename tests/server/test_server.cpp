@@ -199,74 +199,203 @@ int main() {
                   av->body.find("avatar_13800138000.png") != std::string::npos,
               "http: avatar png upload");
 
-        // ===== 管理端(B1) HTTP 覆盖 =====
+        // ========== 管理端(B2) RBAC / 鉴权 / 审计 / 监控 / 统计 HTTP 覆盖 ==========
+        const int simPort2 = freePort();
+        check(app.startSimListener(simPort2), "b2: sim listener start");
+        app.startRestartSweeper(1);  // 重启超时 1s 自恢复(离线兜底)
+
         auto lg = cli.Post("/api/admin/login",
                            "{\"username\":\"admin\",\"password\":\"admin123\"}",
                            "application/json");
         check(lg && lg->body.find("\"code\":0") != std::string::npos &&
-                  lg->body.find("\"role\":\"admin\"") != std::string::npos,
-              "admin: login ok");
+                  lg->body.find("\"role\":\"super\"") != std::string::npos,
+              "admin: login super + role");
+        std::string adminTok;
+        { const auto j = nlohmann::json::parse(lg->body); adminTok = j["data"]["token"].get<std::string>(); }
+        check(!adminTok.empty(), "admin: got token");
+        auto auth = [&] { httplib::Headers h; h.emplace("Authorization", "Bearer " + adminTok); return h; };
+        auto getAuth = [&](const std::string& p) { return cli.Get(p, auth()); };
+        auto postAuth = [&](const std::string& p, const std::string& b) {
+            return cli.Post(p, auth(), b, "application/json"); };
+        auto delAuth = [&](const std::string& p) {
+            return cli.Delete(p, auth(), "", "application/json"); };
 
-        auto users = cli.Get("/api/admin/users?phone=13800138000");
+        // 未认证 / 伪 token 拒绝
+        auto unauth = cli.Get("/api/admin/users");
+        check(unauth && unauth->body.find("\"code\":3") != std::string::npos,
+              "admin: no token -> code3(401)");
+        httplib::Headers fake;
+        fake.emplace("Authorization", "Bearer deadbeef");
+        auto fakeR = cli.Get("/api/admin/users", fake);
+        check(fakeR && fakeR->body.find("\"code\":3") != std::string::npos,
+              "admin: bad token -> code3(401)");
+
+        // 用户搜索 + 冻结/解冻 + 状态筛选
+        auto users = getAuth("/api/admin/users?phone=13800138000");
         check(users && users->body.find("\"code\":0") != std::string::npos &&
                   users->body.find("13800138000") != std::string::npos,
               "admin: search user");
         int uid = -1;
-        {
-            const auto j = nlohmann::json::parse(users->body);
-            if (!j["data"].empty())
-                uid = j["data"][0]["id"].get<int>();
-        }
+        { const auto j = nlohmann::json::parse(users->body); if (!j["data"].empty()) uid = j["data"][0]["id"].get<int>(); }
         if (uid > 0) {
-            auto fr = cli.Post("/api/admin/users/" + std::to_string(uid) + "/freeze",
-                               "{\"frozen\":true}", "application/json");
-            check(fr && fr->body.find("\"code\":0") != std::string::npos,
-                  "admin: freeze user");
-            auto uf = cli.Post("/api/admin/users/" + std::to_string(uid) + "/freeze",
-                               "{\"frozen\":false}", "application/json");
-            check(uf && uf->body.find("\"code\":0") != std::string::npos,
-                  "admin: unfreeze user");
+            auto fr = postAuth("/api/admin/users/" + std::to_string(uid) + "/freeze", "{\"frozen\":true}");
+            check(fr && fr->body.find("\"code\":0") != std::string::npos, "admin: freeze user");
+            auto fz = getAuth("/api/admin/users?phone=13800138000&status=2");
+            check(fz && fz->body.find("\"code\":0") != std::string::npos &&
+                      fz->body.find("\"status\":1") != std::string::npos,
+                  "admin: freeze user appears under status=2 filter");
+            auto uf = postAuth("/api/admin/users/" + std::to_string(uid) + "/freeze", "{\"frozen\":false}");
+            check(uf && uf->body.find("\"code\":0") != std::string::npos, "admin: unfreeze user");
         }
 
-        auto ns = cli.Post("/api/admin/stations",
+        // 资产 CRUD(仅 super) + 孤儿桩拒绝 + 禁删保护
+        auto ns = postAuth("/api/admin/stations",
                            "{\"name\":\"测试站\",\"address\":\"北京测试路1号\","
-                           "\"latitude\":39.9,\"longitude\":116.3,\"price_cents\":150}",
-                           "application/json");
-        check(ns && ns->body.find("\"code\":0") != std::string::npos,
-              "admin: create station");
+                           "\"latitude\":39.9,\"longitude\":116.3,\"price_cents\":150}");
+        check(ns && ns->body.find("\"code\":0") != std::string::npos, "admin: create station");
         int sid = -1;
         { const auto j = nlohmann::json::parse(ns->body); sid = j["data"]["id"].get<int>(); }
         if (sid > 0) {
-            auto nd = cli.Post("/api/admin/stations/" + std::to_string(sid) + "/devices",
-                               "{\"count\":2,\"type\":0,\"power_kw\":120}",
-                               "application/json");
-            check(nd && nd->body.find("\"code\":0") != std::string::npos,
-                  "admin: create 2 devices");
-
-            auto ds = cli.Delete("/api/admin/stations/" + std::to_string(sid));
+            auto orph = postAuth("/api/admin/stations/99999/devices",
+                                 "{\"count\":2,\"type\":0,\"power_kw\":120}");
+            check(orph && orph->body.find("\"code\":1") != std::string::npos &&
+                      orph->body.find("\xe7\xab\x99\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8") != std::string::npos,
+                  "admin: batch devices on missing station REJECTED(no orphan)");
+            auto nd = postAuth("/api/admin/stations/" + std::to_string(sid) + "/devices",
+                               "{\"count\":2,\"type\":0,\"power_kw\":120}");
+            check(nd && nd->body.find("\"code\":0") != std::string::npos, "admin: create 2 devices");
+            auto ds = delAuth("/api/admin/stations/" + std::to_string(sid));
             check(ds && ds->body.find("\"code\":1") != std::string::npos,
                   "admin: delete station with devices REJECTED");
-
-            auto dv = cli.Get("/api/stations/" + std::to_string(sid) + "/devices");
+            auto dv = getAuth("/api/admin/devices?station_id=" + std::to_string(sid));
             int did0 = -1, did1 = -1;
-            {
-                const auto j = nlohmann::json::parse(dv->body);
-                if (j["data"].size() >= 2) {
-                    did0 = j["data"][0]["id"].get<int>();
-                    did1 = j["data"][1]["id"].get<int>();
-                }
-            }
+            { const auto j = nlohmann::json::parse(dv->body);
+              if (j["data"]["items"].size() >= 2) {
+                  did0 = j["data"]["items"][0]["id"].get<int>();
+                  did1 = j["data"]["items"][1]["id"].get<int>(); } }
             if (did0 > 0) {
-                auto dd = cli.Delete("/api/admin/devices/" + std::to_string(did0));
-                check(dd && dd->body.find("\"code\":0") != std::string::npos,
-                      "admin: delete idle device");
+                auto dd = delAuth("/api/admin/devices/" + std::to_string(did0));
+                check(dd && dd->body.find("\"code\":0") != std::string::npos, "admin: delete idle device");
             }
             if (did1 > 0) {
-                cli.Delete("/api/admin/devices/" + std::to_string(did1));
-                auto ds2 = cli.Delete("/api/admin/stations/" + std::to_string(sid));
+                delAuth("/api/admin/devices/" + std::to_string(did1));
+                auto ds2 = delAuth("/api/admin/stations/" + std::to_string(sid));
                 check(ds2 && ds2->body.find("\"code\":0") != std::string::npos,
                       "admin: delete empty station ok");
             }
+        }
+
+        // 设备列表筛选 + 运维/审计/统计查询(此时 seed 故障桩 #6 仍在 → state=2 total=1)
+        {
+            auto devs = getAuth("/api/admin/devices?state=2");
+            check(devs && devs->body.find("\"code\":0") != std::string::npos &&
+                      devs->body.find("\"items\"") != std::string::npos &&
+                      devs->body.find("\"total\":1") != std::string::npos,
+                  "admin: devices filter state=fault finds seed fault pile");
+            auto ops = getAuth("/api/admin/logs/ops");
+            check(ops && ops->body.find("\"code\":0") != std::string::npos, "admin: ops log list");
+            auto audit = getAuth("/api/admin/logs/audit");
+            check(audit && audit->body.find("\"code\":0") != std::string::npos &&
+                      audit->body.find("login") != std::string::npos,
+                  "admin: audit log has login entry");
+            auto st = getAuth("/api/admin/stats/overview");
+            check(st && st->body.find("\"code\":0") != std::string::npos &&
+                      st->body.find("\"device_health\"") != std::string::npos &&
+                      st->body.find("\"online_rate\"") != std::string::npos,
+                  "admin: stats overview fields present");
+            auto daily = getAuth("/api/admin/stats/daily?days=7");
+            check(daily && daily->body.find("\"code\":0") != std::string::npos,
+                  "admin: stats daily list");
+        }
+
+        // operator / viewer 角色门禁(operator 可重启故障桩 #6; viewer 全拒写)
+        {
+            auto olg = cli.Post("/api/admin/login",
+                                "{\"username\":\"operator\",\"password\":\"operator123\"}",
+                                "application/json");
+            check(olg && olg->body.find("\"code\":0") != std::string::npos &&
+                      olg->body.find("\"role\":\"operator\"") != std::string::npos,
+                  "operator: login role operator");
+            std::string ot;
+            { const auto j = nlohmann::json::parse(olg->body); ot = j["data"]["token"].get<std::string>(); }
+            httplib::Headers oh;
+            oh.emplace("Authorization", "Bearer " + ot);
+            auto of = cli.Post("/api/admin/users/1/freeze", oh, "{\"frozen\":true}", "application/json");
+            check(of && of->body.find("\"code\":4") != std::string::npos,
+                  "operator: freeze -> code4(403)");
+            auto our = cli.Get("/api/admin/users", oh);
+            check(our && our->body.find("\"code\":0") != std::string::npos,
+                  "operator: read users ok");
+            auto orr = cli.Post("/api/admin/devices/6/restart", oh, "{}", "application/json");
+            check(orr && orr->body.find("\"code\":0") != std::string::npos,
+                  "operator: restart fault pile allowed");
+
+            auto vg = cli.Post("/api/admin/login",
+                               "{\"username\":\"viewer\",\"password\":\"viewer123\"}",
+                               "application/json");
+            check(vg && vg->body.find("\"code\":0") != std::string::npos &&
+                      vg->body.find("\"role\":\"viewer\"") != std::string::npos,
+                  "viewer: login role viewer");
+            std::string vt;
+            { const auto j = nlohmann::json::parse(vg->body); vt = j["data"]["token"].get<std::string>(); }
+            httplib::Headers vh;
+            vh.emplace("Authorization", "Bearer " + vt);
+            auto vf = cli.Post("/api/admin/users/1/freeze", vh, "{\"frozen\":true}", "application/json");
+            check(vf && vf->body.find("\"code\":4") != std::string::npos, "viewer: freeze -> code4");
+            auto vr = cli.Post("/api/admin/devices/1/restart", vh, "{}", "application/json");
+            check(vr && vr->body.find("\"code\":4") != std::string::npos, "viewer: restart -> code4");
+            auto vo = cli.Get("/api/admin/stats/overview", vh);
+            check(vo && vo->body.find("\"code\":0") != std::string::npos,
+                  "viewer: read stats ok");
+        }
+
+        // 模拟器自主故障 → 故障 → 远程重启 → 心跳恢复 全链路(#7)
+        {
+            const int fd = socket(AF_INET, SOCK_STREAM, 0);
+            bool okConn = false;
+            if (fd >= 0) {
+                sockaddr_in a{};
+                a.sin_family = AF_INET;
+                a.sin_port = htons(static_cast<uint16_t>(simPort2));
+                inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+                okConn = connect(fd, reinterpret_cast<sockaddr*>(&a), sizeof(a)) == 0;
+            }
+            check(okConn, "b2: sim connect");
+            if (okConn) {
+                sendLine(fd, "{\"type\":\"register\",\"devices\":[7]}\n");
+                sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":7,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":0}\n");
+                sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":7,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":2}\n");
+                int st7 = -1;
+                for (int k = 0; k < 10 && st7 != 2; ++k) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    auto q = getAuth("/api/admin/devices?q=7");
+                    if (q) { const auto j = nlohmann::json::parse(q->body);
+                             if (!j["data"]["items"].empty()) st7 = j["data"]["items"][0]["state"].get<int>(); }
+                }
+                check(st7 == 2, "b2: sim fault -> device Fault");
+                auto rr = postAuth("/api/admin/devices/7/restart", "{}");
+                check(rr && rr->body.find("\"code\":0") != std::string::npos &&
+                          rr->body.find("\"state\":4") != std::string::npos,
+                      "b2: restart -> Rebooting(4)");
+                sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":7,\"voltage\":220.0,\"current\":0.0,\"temperature\":25.0,\"sim_state\":0}\n");
+                int stAfter = -1;
+                for (int k = 0; k < 10 && stAfter != 0; ++k) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    auto q = getAuth("/api/admin/devices?q=7");
+                    if (q) { const auto j = nlohmann::json::parse(q->body);
+                             if (!j["data"]["items"].empty()) stAfter = j["data"]["items"][0]["state"].get<int>(); }
+                }
+                check(stAfter == 0, "b2: heartbeat recovery -> Idle");
+                auto ops2 = getAuth("/api/admin/logs/ops");
+                check(ops2 && ops2->body.find("\"op_type\":\"restart\"") != std::string::npos &&
+                          ops2->body.find("\"op_type\":\"recover\"") != std::string::npos,
+                      "b2: ops log restart+recover");
+                auto audit2 = getAuth("/api/admin/logs/audit");
+                check(audit2 && audit2->body.find("device.restart") != std::string::npos,
+                      "b2: audit device.restart entry");
+                close(fd);
+            }
+            app.stopSimListener();
         }
         app.server().stop();
         th.join();
@@ -423,7 +552,58 @@ int main() {
                   hist[0].amountCents == 200,
               "wal history paid amount 200");
     }
-    ::unlink(walDb.toLocal8Bit().constData());
+
+    // 8) B2 后端直测：孤儿桩 / 事务计数 / 审计运维 / 聚合统计
+    const QString b2Db = tempDb("b2");
+    {
+        ncs::backend::Store st;
+        check(st.open(b2Db), "b2 store.open");
+        ncs::backend::DeviceFilter all;  // -1 = 全部
+        check(st.countDevicesAdmin(all) == 9, "b2: seed 9 devices");
+        check(st.createDevices(99999, 0, 3, 120) == -1,
+              "b2: createDevices on missing station -> -1");
+        check(st.countDevicesAdmin(all) == 9,
+              "b2: no orphan devices after rejected batch");
+        check(st.createDevices(1, 0, 2, 120) == 1, "b2: createDevices batch ok");
+        ncs::Station s1;
+        st.getStationById(1, &s1);
+        check(s1.totalPiles == 5 && s1.freePiles == 4,
+              "b2: station counters +2 (total5/free4)");
+        ncs::backend::DeviceFilter idle1;
+        idle1.stationId = 1;
+        idle1.state = 0;
+        QVector<ncs::backend::DeviceRow> rows;
+        st.listDevicesAdmin(idle1, 10, 0, &rows);
+        check(rows.size() >= 3 && !rows[0].stationName.isEmpty(),
+              "b2: idle devices aggregated with station name");
+        const int idToDel = rows[0].dev.id;
+        check(st.deleteDeviceIfIdle(idToDel) == 1, "b2: delete idle device ok");
+        st.getStationById(1, &s1);
+        check(s1.totalPiles == 4 && s1.freePiles == 3,
+              "b2: delete rolls back counters");
+        check(st.deleteDeviceIfIdle(idToDel) == -1, "b2: double delete -> -1");
+        check(st.appendAudit(QStringLiteral("admin"), QStringLiteral("station.create"),
+                             QStringLiteral("测试建站"), true),
+              "b2: appendAudit ok");
+        check(st.appendDeviceOp(1, QStringLiteral("restart"),
+                                QStringLiteral("admin"), QStringLiteral("重启")),
+              "b2: appendDeviceOp ok");
+        const auto ops = st.listDeviceOps(10, 0);
+        check(ops.size() == 1 && ops[0].deviceId == 1 &&
+                  ops[0].opType == QStringLiteral("restart"),
+              "b2: deviceOps list round-trip");
+        const auto audit = st.listAudit(10, 0);
+        check(audit.size() == 1 &&
+                  audit[0].action == QStringLiteral("station.create") &&
+                  audit[0].result == QStringLiteral("ok"),
+              "b2: audit list round-trip");
+        check(st.deviceStateCounts().size() == 5, "b2: deviceStateCounts 5 bins");
+        const auto daily = st.dailyRevenue(7);
+        check(daily.size() == 7, "b2: dailyRevenue zero-filled 7 days");
+        const auto agg = st.revenueWindow(QString(), QString());
+        check(agg.orders == 0 && agg.cents == 0, "b2: revenue empty orders 0");
+    }
+    ::unlink(b2Db.toLocal8Bit().constData());
 
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
