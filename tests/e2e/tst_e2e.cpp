@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "services/HttpUserService.h"
+#include "services/HttpStationService.h"
 #include "BackendApp.h"
 
 class TstE2e : public QObject {
@@ -18,6 +19,7 @@ private slots:
     void invalidPhoneFails();
     void loginRegistersAndIdempotent();
     void wrongCodeFails();
+    void stationsThroughService();
 
 private:
     QString dbPath_;
@@ -83,6 +85,17 @@ void TstE2e::wrongCodeFails() {
                              QStringLiteral("000000"));
     QVERIFY(!r.ok);
     QVERIFY(!r.message.isEmpty());
+}
+
+void TstE2e::stationsThroughService() {
+    const QString base = QStringLiteral("http://127.0.0.1:%1").arg(port_);
+    ncs::client::HttpStationService svc(base);
+    const auto stations = svc.listStations();
+    QCOMPARE(stations.size(), 3);  // seed 数据
+    QVERIFY(stations.first().freePiles > 0);
+    QVERIFY(stations.first().pricePerKwhCents > 0);
+    const auto devices = svc.listDevices(stations.first().id);
+    QVERIFY2(devices.size() >= 2, "station 1 should own >=2 devices");
 }
 
 #include "tst_e2e.moc"

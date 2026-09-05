@@ -1,17 +1,15 @@
-// IUserService 的真实 HTTP 实现：Qt QNetworkAccessManager + JSON。
-// 同步语义(阻塞等结果，带超时)，与现有纯虚接口保持一致；
-// 后续可改为信号槽异步版本而不动上层 UI。
 #ifndef NCS_CLIENT_SERVICES_HTTPUSERSERVICE_H
 #define NCS_CLIENT_SERVICES_HTTPUSERSERVICE_H
 
-#include <QJsonObject>
 #include <QString>
 
+#include "HttpJsonClient.h"
 #include "IUserService.h"
 
 namespace ncs {
 namespace client {
 
+// IUserService 的 HTTP 实现(同步，基于 HttpJsonClient)。
 class HttpUserService : public IUserService {
 public:
     explicit HttpUserService(
@@ -20,18 +18,10 @@ public:
     LoginResult requestCode(const QString& phone) override;
     LoginResult login(const QString& phone, const QString& code) override;
 
-    const QString& baseUrl() const { return baseUrl_; }
+    const QString& baseUrl() const { return client_.baseUrl(); }
 
 private:
-    struct HttpOut {
-        bool ok = false;      // 网络层/超时是否正常
-        int status = 0;
-        QJsonObject body;
-        QString error;
-    };
-    HttpOut post(const QString& path, const QJsonObject& json) const;
-
-    QString baseUrl_;
+    HttpJsonClient client_;
 };
 
 }  // namespace client

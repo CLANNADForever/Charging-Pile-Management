@@ -1,6 +1,7 @@
 #include "ProfilePage.h"
 
 #include <QLabel>
+#include <QPushButton>
 #include <QVBoxLayout>
 
 #include "money.h"
@@ -24,6 +25,9 @@ ProfilePage::ProfilePage(const ncs::User& user, QWidget* parent)
     balance_ = new QLabel(this);
     balance_->setObjectName(QStringLiteral("profileBalance"));
 
+    auto* goStation = new QPushButton(QStringLiteral("周边找桩"), this);
+    goStation->setObjectName(QStringLiteral("btnGoStations"));
+
     auto* note = new QLabel(QStringLiteral("占位：钱包 / 历史订单 / 设置 由后续加入"), this);
     note->setObjectName(QStringLiteral("profileNote"));
     note->setWordWrap(true);
@@ -35,9 +39,12 @@ ProfilePage::ProfilePage(const ncs::User& user, QWidget* parent)
     layout->addWidget(phone_);
     layout->addWidget(balance_);
     layout->addSpacing(16);
+    layout->addWidget(goStation);
+    layout->addSpacing(16);
     layout->addWidget(note);
     layout->addStretch();
 
+    connect(goStation, &QPushButton::clicked, this, &ProfilePage::goFindStations);
     setUser(user);
 }
 
