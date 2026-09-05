@@ -4,6 +4,7 @@
 
 #include <functional>
 
+#include <QByteArray>
 #include <QString>
 
 #include "entities.h"
@@ -24,6 +25,16 @@ public:
     virtual void requestCode(const QString& phone, LoginCallback done) = 0;
     virtual void login(const QString& phone, const QString& code,
                        LoginCallback done) = 0;
+    // 充值/改昵称(返回更新后的用户)
+    virtual void recharge(const QString& phone, ncs::MoneyCents amountCents,
+                          LoginCallback done) = 0;
+    virtual void setNickname(const QString& phone, const QString& nickname,
+                             LoginCallback done) = 0;
+    // 头像上传(字节)；error 空=成功
+    using AvatarCallback =
+        std::function<void(const QString& error, const QString& url)>;
+    virtual void uploadAvatar(const QString& phone, const QByteArray& bytes,
+                              AvatarCallback done) = 0;
 };
 
 }  // namespace client

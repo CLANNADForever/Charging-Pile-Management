@@ -22,6 +22,8 @@ public:
     void cancel(int orderId, OrderCallback done) override;
     void live(int orderId, LiveCallback done) override;
     void listActive(const QString& phone, OrdersCallback done) override;
+    void listHistory(const QString& phone, int limit, int offset,
+                    HistoryCallback done) override;
 
 private:
     void postOrder(const QString& path, const QJsonObject* body,

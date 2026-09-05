@@ -125,5 +125,30 @@ void HttpChargeService::live(int orderId, LiveCallback done) {
                 });
 }
 
+void HttpChargeService::listHistory(const QString& phone, int limit,
+                                        int offset, HistoryCallback done) {
+    client_.get(QStringLiteral("/api/orders/history?phone=%1&limit=%2&offset=%3")
+                    .arg(phone)
+                    .arg(limit)
+                    .arg(offset),
+                [done = std::move(done)](const HttpJsonClient::Reply& h) {
+                    HistoryResult r;
+                    if (!h.transportOk) {
+                        r.message = h.error;
+                    } else if (h.code != 0) {
+                        r.message = h.message;
+                    } else {
+                        r.ok = true;
+                        const QJsonObject o = h.data.toObject();
+                        r.total = o.value(QStringLiteral("total")).toVariant().toLongLong();
+                        const QJsonArray arr =
+                            o.value(QStringLiteral("items")).toArray();
+                        for (const auto& v : arr)
+                            r.items.push_back(orderFromJson(v.toObject()));
+                    }
+                    done(r);
+                });
+}
+
 }  // namespace client
 }  // namespace ncs

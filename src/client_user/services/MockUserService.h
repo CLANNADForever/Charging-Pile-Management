@@ -16,6 +16,12 @@ public:
     void requestCode(const QString& phone, LoginCallback done) override;
     void login(const QString& phone, const QString& code,
                LoginCallback done) override;
+    void recharge(const QString& phone, ncs::MoneyCents amountCents,
+                  LoginCallback done) override;
+    void setNickname(const QString& phone, const QString& nickname,
+                     LoginCallback done) override;
+    void uploadAvatar(const QString& phone, const QByteArray& bytes,
+                      AvatarCallback done) override;
 
     void clear();
 
