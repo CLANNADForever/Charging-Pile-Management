@@ -3,6 +3,8 @@ add_library(ncs_common STATIC
     money.cpp
     billing.h
     billing.cpp
+    phone.h
+    phone.cpp
     entities.h
     entities.cpp
 )

@@ -1,12 +1,13 @@
-#include "MockUserService.h"
+#include "AuthService.h"
 
+#include "database/Store.h"
 #include "phone.h"
 
 namespace ncs {
-namespace client {
+namespace backend {
 
-LoginResult MockUserService::requestCode(const QString& phone) {
-    LoginResult r;
+AuthReply AuthService::sendCode(const QString& phone) const {
+    AuthReply r;
     if (!ncs::is_valid_phone11(phone)) {
         r.message = QStringLiteral("请输入 11 位手机号");
         return r;
@@ -16,8 +17,8 @@ LoginResult MockUserService::requestCode(const QString& phone) {
     return r;
 }
 
-LoginResult MockUserService::login(const QString& phone, const QString& code) {
-    LoginResult r;
+AuthReply AuthService::login(const QString& phone, const QString& code) {
+    AuthReply r;
     if (!ncs::is_valid_phone11(phone)) {
         r.message = QStringLiteral("请输入 11 位手机号");
         return r;
@@ -26,17 +27,18 @@ LoginResult MockUserService::login(const QString& phone, const QString& code) {
         r.message = QStringLiteral("验证码错误");
         return r;
     }
-    User& u = users_[phone];  // 不存在则自动注册新用户
-    if (u.phone.isEmpty()) {
-        u.phone = phone;
-        u.nickname = QStringLiteral("充电用户") + phone.right(4);
-        u.balanceCents = 0;
+    if (!store_->ensureUserByPhone(phone, &r.user)) {
+        r.message = QStringLiteral("数据库错误");
+        return r;
+    }
+    if (r.user.status == ncs::UserStatus::Frozen) {
+        r.message = QStringLiteral("账号已冻结，请联系客服");
+        return r;
     }
     r.ok = true;
     r.message = QStringLiteral("登录成功");
-    r.user = u;
     return r;
 }
 
-}  // namespace client
+}  // namespace backend
 }  // namespace ncs
