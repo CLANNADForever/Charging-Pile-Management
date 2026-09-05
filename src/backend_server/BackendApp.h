@@ -104,7 +104,6 @@ private:
     std::map<int, double> deviceEnergy_;   // deviceId -> 最近心跳 energy_kwh
     std::map<int, double> devicePower_;    // deviceId -> 最近心跳 power_kw
     std::map<int, long long> deviceLastTs_;  // deviceId -> 最近心跳 epoch ms
-    std::map<int, int> deviceSimState_;    // deviceId -> 最近心跳 sim_state(-1 未知)
 
     // 管理端会话 token
     mutable std::mutex sessionMu_;

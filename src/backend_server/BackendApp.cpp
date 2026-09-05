@@ -1096,7 +1096,6 @@ void BackendApp::registerSimDevices(int fd, const std::vector<int>& ids) {
         deviceEnergy_[id] = 0.0;
         devicePower_[id] = 0.0;
         deviceLastTs_[id] = nowMs;
-        deviceSimState_[id] = -1;
     }
 }
 
@@ -1111,7 +1110,6 @@ void BackendApp::unregisterSimFd(int fd) {
         deviceEnergy_.erase(id);
         devicePower_.erase(id);
         deviceLastTs_.erase(id);
-        deviceSimState_.erase(id);
         it = deviceFd_.erase(it);
     }
 }
@@ -1150,7 +1148,6 @@ void BackendApp::forgetDevice(int deviceId) {
     deviceEnergy_.erase(deviceId);
     devicePower_.erase(deviceId);
     deviceLastTs_.erase(deviceId);
-    deviceSimState_.erase(deviceId);
 }
 
 QVector<SimLive> BackendApp::simLiveSnapshot() const {
@@ -1216,21 +1213,31 @@ bool BackendApp::requireAdmin(const httplib::Request& req,
 }
 
 // 心跳驱动的故障/恢复流转(仅设备自主侧，不动业务进行中的桩)
+// 心跳驱动的故障/恢复流转。
+// 注意：不设"上次已见过 sim_state"的缓存去重——业务进行中(Reserved/Charging)
+// 被忽略的故障若被缓存记住，会在桩回到 Idle 后因去重提前 return，造成"隐形故障"。
+// 改为：每次心跳都用"当前 DB 状态 + 本次 sim_state"独立判定；无需变更则直接返回
+// (轻量只读探针，不开事务)，需要变更才开事务并按事务内最新状态落库。
 void BackendApp::applySimState(int deviceId, int simState) {
     if (simState < 0)
         return;
-    {
-        std::lock_guard<std::mutex> lk(simMu_);
-        const auto it = deviceSimState_.find(deviceId);
-        if (it != deviceSimState_.end() && it->second == simState)
-            return;
-    }
+    ncs::Device probe;
+    if (!store_.getDeviceById(deviceId, &probe))  // 桩不存在/已删：忽略
+        return;
+    const bool needChange =
+        (simState == 2 && probe.state == ncs::DeviceState::Idle) ||
+        (simState == 4 && probe.state == ncs::DeviceState::Fault) ||
+        (simState != 2 && simState != 4 &&
+         (probe.state == ncs::DeviceState::Fault ||
+          probe.state == ncs::DeviceState::Rebooting));
+    if (!needChange)
+        return;  // 已一致，或 Reserved/Charging 业务进行中(下个心跳再评估)
     if (!store_.beginTx())  // 服务忙则下个心跳重试
         return;
     ncs::Device d;
     bool changed = false;
     QString op, detail;
-    if (store_.getDeviceById(deviceId, &d)) {
+    if (store_.getDeviceById(deviceId, &d)) {  // 事务内以最新状态为准(防与预约/结算交错)
         if (simState == 2) {  // 设备自主上报故障
             if (d.state == ncs::DeviceState::Idle) {
                 store_.setDeviceState(deviceId,
@@ -1246,31 +1253,29 @@ void BackendApp::applySimState(int deviceId, int simState) {
                 store_.setDeviceState(
                     deviceId, static_cast<int>(ncs::DeviceState::Rebooting));
             // 运维日志由 adminRestartDevice 记录，不在此重复
-        } else if (d.state == ncs::DeviceState::Fault) {
-            store_.setDeviceState(deviceId,
-                                  static_cast<int>(ncs::DeviceState::Idle));
-            store_.adjustStationFree(d.stationId, 1);
-            changed = true;
-            op = QStringLiteral("recover");
-            detail = QStringLiteral("设备自愈恢复正常");
-        } else if (d.state == ncs::DeviceState::Rebooting) {
-            store_.setDeviceState(deviceId,
-                                  static_cast<int>(ncs::DeviceState::Idle));
-            store_.adjustStationFree(d.stationId, 1);
-            changed = true;
-            op = QStringLiteral("recover");
-            detail = QStringLiteral("远程重启成功，恢复正常");
-            std::lock_guard<std::mutex> lk(rebootingMu_);
-            rebootingSince_.erase(deviceId);
+        } else {  // 恢复正常(0/1)
+            if (d.state == ncs::DeviceState::Fault) {
+                store_.setDeviceState(deviceId,
+                                      static_cast<int>(ncs::DeviceState::Idle));
+                store_.adjustStationFree(d.stationId, 1);
+                changed = true;
+                op = QStringLiteral("recover");
+                detail = QStringLiteral("设备自愈恢复正常");
+            } else if (d.state == ncs::DeviceState::Rebooting) {
+                store_.setDeviceState(deviceId,
+                                      static_cast<int>(ncs::DeviceState::Idle));
+                store_.adjustStationFree(d.stationId, 1);
+                changed = true;
+                op = QStringLiteral("recover");
+                detail = QStringLiteral("远程重启成功，恢复正常");
+                std::lock_guard<std::mutex> lk(rebootingMu_);
+                rebootingSince_.erase(deviceId);
+            }
         }
     }
     if (changed)
         store_.appendDeviceOp(deviceId, op, QString(), detail);
     store_.commitTx();
-    {
-        std::lock_guard<std::mutex> lk(simMu_);
-        deviceSimState_[deviceId] = simState;
-    }
 }
 
 bool BackendApp::adminRestartDevice(int deviceId, const QString& opBy,
