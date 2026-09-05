@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <QDateTime>
+#include <QCryptographicHash>
 
 namespace ncs {
 namespace backend {
@@ -63,6 +64,8 @@ bool Store::open(const QString& dbPath) {
         " amount_cents INTEGER NOT NULL DEFAULT 0,"
         " energy_kwh REAL NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0,"
         " started_at TEXT NOT NULL, finished_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS admins ("
+        " username TEXT PRIMARY KEY, password TEXT NOT NULL)",
     };
     for (const char* sql : kTables) {
         char* err = nullptr;
@@ -71,7 +74,9 @@ bool Store::open(const QString& dbPath) {
             return false;
         }
     }
-    return seedIfEmptyLocked();
+    if (!seedIfEmptyLocked())
+        return false;
+    return seedAdminsLocked();
 }
 
 bool Store::isOpen() const {
@@ -681,5 +686,247 @@ qint64 Store::countHistoryByPhone(const QString& phone) const {
     return n;
 }
 
+
+bool Store::seedAdminsLocked() {
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM admins", -1, &st,
+                           nullptr) != SQLITE_OK)
+        return false;
+    const bool has = sqlite3_step(st) == SQLITE_ROW &&
+                     sqlite3_column_int64(st, 0) > 0;
+    sqlite3_finalize(st);
+    if (has)
+        return true;
+    const auto h = [](const QString& s) {
+        return QCryptographicHash::hash(s.toUtf8(), QCryptographicHash::Sha256)
+            .toHex();
+    };
+    const QString sql =
+        QStringLiteral("INSERT INTO admins(username,password) VALUES('%1','%2')")
+            .arg(QStringLiteral("admin"), QString::fromLatin1(h(QStringLiteral("admin123"))));
+    char* err = nullptr;
+    const int rc =
+        sqlite3_exec(db_, sql.toUtf8().constData(), nullptr, nullptr, &err);
+    if (rc != SQLITE_OK) {
+        sqlite3_free(err);
+        return false;
+    }
+    return true;
+}
+
+bool Store::authenticateAdmin(const QString& username,
+                              const QString& password) const {
+    auto lk = lockGuard();
+    if (!db_)
+        return false;
+    const QByteArray h = QCryptographicHash::hash(
+                             password.toUtf8(), QCryptographicHash::Sha256)
+                             .toHex();
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT password FROM admins WHERE username=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    const QByteArray un = username.toUtf8();
+    sqlite3_bind_text(st, 1, un.constData(), un.size(), SQLITE_TRANSIENT);
+    bool ok = false;
+    if (sqlite3_step(st) == SQLITE_ROW)
+        ok = columnText(st, 0) == QString::fromLatin1(h);
+    sqlite3_finalize(st);
+    return ok;
+}
+
+QVector<ncs::User> Store::searchUsers(const QString& phone) const {
+    QVector<ncs::User> out;
+    auto lk = lockGuard();
+    if (!db_)
+        return out;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "SELECT id,phone,nickname,balance_cents,status,registered_at "
+                           "FROM users WHERE phone LIKE ? ORDER BY id LIMIT 50",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return out;
+    const QByteArray like = ("%" + phone + "%").toUtf8();
+    sqlite3_bind_text(st, 1, like.constData(), like.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        ncs::User u;
+        u.id = sqlite3_column_int(st, 0);
+        u.phone = columnText(st, 1);
+        u.nickname = columnText(st, 2);
+        u.balanceCents = sqlite3_column_int64(st, 3);
+        u.status = static_cast<ncs::UserStatus>(sqlite3_column_int(st, 4));
+        u.registeredAt = fromDbIso(columnText(st, 5));
+        out.push_back(u);
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
+bool Store::setUserStatus(int userId, int status) {
+    auto lk = lockGuard();
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE users SET status=? WHERE id=?", -1,
+                           &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, status);
+    sqlite3_bind_int(st, 2, userId);
+    const int rc = sqlite3_step(st);
+    const bool changed = rc == SQLITE_DONE && sqlite3_changes(db_) > 0;
+    sqlite3_finalize(st);
+    return changed;
+}
+
+int Store::createStation(const QString& name, const QString& address, double lat,
+                         double lng, ncs::MoneyCents priceCents) {
+    auto lk = lockGuard();
+    if (!db_)
+        return -1;
+    const char* sql =
+        "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles) "
+        "VALUES (?,?,?,?,0,?,0)";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return -1;
+    const QByteArray n = name.toUtf8(), a = address.toUtf8();
+    sqlite3_bind_text(st, 1, n.constData(), n.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, a.constData(), a.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_double(st, 3, lat);
+    sqlite3_bind_double(st, 4, lng);
+    sqlite3_bind_int64(st, 5, static_cast<sqlite3_int64>(priceCents));
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE ? static_cast<int>(sqlite3_last_insert_rowid(db_))
+                             : -1;
+}
+
+bool Store::updateStation(int id, const QString& name, const QString& address,
+                          double lat, double lng, ncs::MoneyCents priceCents) {
+    auto lk = lockGuard();
+    if (!db_)
+        return false;
+    const char* sql = "UPDATE stations SET name=?,address=?,latitude=?,longitude=?,"
+                      "price_cents=? WHERE id=?";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    const QByteArray n = name.toUtf8(), a = address.toUtf8();
+    sqlite3_bind_text(st, 1, n.constData(), n.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, a.constData(), a.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_double(st, 3, lat);
+    sqlite3_bind_double(st, 4, lng);
+    sqlite3_bind_int64(st, 5, static_cast<sqlite3_int64>(priceCents));
+    sqlite3_bind_int(st, 6, id);
+    const int rc = sqlite3_step(st);
+    const bool changed = rc == SQLITE_DONE && sqlite3_changes(db_) > 0;
+    sqlite3_finalize(st);
+    return changed;
+}
+
+qint64 Store::countDevicesByStation(int stationId) const {
+    auto lk = lockGuard();
+    if (!db_)
+        return -1;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM devices WHERE station_id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return -1;
+    sqlite3_bind_int(st, 1, stationId);
+    qint64 n = 0;
+    if (sqlite3_step(st) == SQLITE_ROW)
+        n = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+    return n;
+}
+
+bool Store::deleteStationById(int id) {
+    auto lk = lockGuard();
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "DELETE FROM stations WHERE id=?", -1, &st,
+                           nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, id);
+    const int rc = sqlite3_step(st);
+    const bool changed = rc == SQLITE_DONE && sqlite3_changes(db_) > 0;
+    sqlite3_finalize(st);
+    return changed;
+}
+
+bool Store::createDevices(int stationId, int type, int count, double powerKw) {
+    auto lk = lockGuard();
+    if (!db_ || count <= 0)
+        return false;
+    const char* sql =
+        "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES (?,?,0,?,0)";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, stationId);
+    sqlite3_bind_int(st, 2, type);
+    sqlite3_bind_double(st, 3, powerKw);
+    bool all = true;
+    for (int i = 0; i < count; ++i) {
+        sqlite3_reset(st);
+        if (sqlite3_step(st) != SQLITE_DONE) {
+            all = false;
+            break;
+        }
+    }
+    sqlite3_finalize(st);
+    if (!all)
+        return false;
+    const QByteArray up =
+        QByteArrayLiteral("UPDATE stations SET total_piles=total_piles+%1, "
+                          "free_piles=free_piles+%2 WHERE id=%3")
+            .replace("%1", QByteArray::number(count))
+            .replace("%2", QByteArray::number(count))
+            .replace("%3", QByteArray::number(stationId));
+    char* err = nullptr;
+    const int rc = sqlite3_exec(db_, up.constData(), nullptr, nullptr, &err);
+    if (rc != SQLITE_OK)
+        sqlite3_free(err);
+    return rc == SQLITE_OK;
+}
+
+int Store::deleteDeviceIfIdle(int id) {
+    auto lk = lockGuard();
+    if (!db_)
+        return -1;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT state,station_id FROM devices WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return -1;
+    sqlite3_bind_int(st, 1, id);
+    int state = -1, station = -1;
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        state = sqlite3_column_int(st, 0);
+        station = sqlite3_column_int(st, 1);
+    }
+    sqlite3_finalize(st);
+    if (state == -1)
+        return -1;
+    if (state != 0)
+        return 0;
+    sqlite3_stmt* del = nullptr;
+    if (sqlite3_prepare_v2(db_, "DELETE FROM devices WHERE id=?", -1, &del,
+                           nullptr) != SQLITE_OK)
+        return -1;
+    sqlite3_bind_int(del, 1, id);
+    const int rc = sqlite3_step(del);
+    sqlite3_finalize(del);
+    if (rc != SQLITE_DONE)
+        return -1;
+    char* err = nullptr;
+    const QByteArray up =
+        QByteArrayLiteral(
+            "UPDATE stations SET total_piles=MAX(0,total_piles-1), "
+            "free_piles=MAX(0,free_piles-1) WHERE id=") +
+        QByteArray::number(station);
+    sqlite3_exec(db_, up.constData(), nullptr, nullptr, &err);
+    return 1;
+}
 }  // namespace backend
 }  // namespace ncs

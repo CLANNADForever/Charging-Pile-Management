@@ -62,10 +62,24 @@ public:
     QVector<ncs::Order> listHistoryByPhone(const QString& phone, int limit,
                                            int offset) const;
     qint64 countHistoryByPhone(const QString& phone) const;
+    // 管理端：认证 / 风控 / 资产
+    bool authenticateAdmin(const QString& username,
+                           const QString& password) const;
+    QVector<ncs::User> searchUsers(const QString& phone) const;
+    bool setUserStatus(int userId, int status);
+    int createStation(const QString& name, const QString& address,
+                      double lat, double lng, ncs::MoneyCents priceCents);
+    bool updateStation(int id, const QString& name, const QString& address,
+                       double lat, double lng, ncs::MoneyCents priceCents);
+    qint64 countDevicesByStation(int stationId) const;
+    bool deleteStationById(int id);
+    bool createDevices(int stationId, int type, int count, double powerKw);
+    int deleteDeviceIfIdle(int id);  // 1=已删 0=占用 拒绝 -1=不存在
 private:
     bool findLocked(const QString& phone, ncs::User* out) const;  // 调用方持锁
     bool insertUserLocked(const QString& phone);                  // 调用方持锁
     bool seedIfEmptyLocked();                                     // 调用方持锁
+    bool seedAdminsLocked();                                     // 调用方持锁
 
     // 事务内(本线程)不再重复加锁，否则照常加锁
     std::unique_lock<std::mutex> lockGuard() const;

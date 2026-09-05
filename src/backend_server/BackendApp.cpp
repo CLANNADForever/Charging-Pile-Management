@@ -448,8 +448,183 @@ void BackendApp::registerRoutes() {
                           json{{"url", (QStringLiteral("/uploads/") + base).toStdString()}});
               });
 
-}
+    // ---------- 管理端 (B1) ----------
+    srv_.Post("/api/admin/login",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  QString user, pass;
+                  try {
+                      const auto j = json::parse(req.body);
+                      user = QString::fromStdString(j.at("username").get<std::string>());
+                      pass = QString::fromStdString(j.at("password").get<std::string>());
+                  } catch (...) {
+                      reply(res, kCodeBadReq, "body 需 username/password", nullptr);
+                      return;
+                  }
+                  if (!store_.authenticateAdmin(user, pass)) {
+                      replyBizErr(res, QStringLiteral("账号或密码错误"));
+                      return;
+                  }
+                  replyOk(res, json{{"username", user.toStdString()},
+                                    {"role", "admin"}});
+              });
 
+    srv_.Get("/api/admin/users",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 const QString phone =
+                     QString::fromStdString(req.get_param_value("phone"));
+                 const auto users = store_.searchUsers(phone);
+                 json arr = json::array();
+                 for (const auto& u : users)
+                     arr.push_back(userToJson(u));
+                 replyOk(res, std::move(arr));
+             });
+
+    srv_.Post(R"(/api/admin/users/(\d+)/freeze)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺用户 id", nullptr);
+                      return;
+                  }
+                  bool frozen = true;
+                  try {
+                      frozen = json::parse(req.body).value("frozen", true);
+                  } catch (...) {
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  if (!store_.setUserStatus(id, frozen ? 1 : 0)) {
+                      replyBizErr(res, QStringLiteral("用户不存在或保存失败"));
+                      return;
+                  }
+                  replyOk(res, nullptr);
+              });
+
+    srv_.Post("/api/admin/stations",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  QString name, address;
+                  double lat = 0, lng = 0;
+                  ncs::MoneyCents price = 0;
+                  try {
+                      const auto j = json::parse(req.body);
+                      name = QString::fromStdString(j.at("name").get<std::string>());
+                      address = QString::fromStdString(j.at("address").get<std::string>());
+                      lat = j.value("latitude", 0.0);
+                      lng = j.value("longitude", 0.0);
+                      price = j.value("price_cents", 0LL);
+                  } catch (...) {
+                      reply(res, kCodeBadReq, "body 需 name/address", nullptr);
+                      return;
+                  }
+                  if (name.trimmed().isEmpty() || address.trimmed().isEmpty()) {
+                      replyBizErr(res, QStringLiteral("名称与地址不能为空"));
+                      return;
+                  }
+                  const int id = store_.createStation(
+                      name.trimmed(), address.trimmed(), lat, lng,
+                      qMax<ncs::MoneyCents>(0, price));
+                  if (id < 0) {
+                      replyBizErr(res, QStringLiteral("建站失败"));
+                      return;
+                  }
+                  replyOk(res, json{{"id", id}});
+              });
+
+    srv_.Patch(R"(/api/admin/stations/(\d+))",
+               [this](const httplib::Request& req, httplib::Response& res) {
+                   if (req.matches.size() < 2) {
+                       reply(res, kCodeBadReq, "缺站 id", nullptr);
+                       return;
+                   }
+                   QString name, address;
+                   double lat = 0, lng = 0;
+                   ncs::MoneyCents price = 0;
+                   try {
+                       const auto j = json::parse(req.body);
+                       name = QString::fromStdString(j.at("name").get<std::string>());
+                       address = QString::fromStdString(j.at("address").get<std::string>());
+                       lat = j.value("latitude", 0.0);
+                       lng = j.value("longitude", 0.0);
+                       price = j.value("price_cents", 0LL);
+                   } catch (...) {
+                       reply(res, kCodeBadReq, "body 需 name/address", nullptr);
+                       return;
+                   }
+                   const int id = std::stoi(req.matches[1]);
+                   if (!store_.updateStation(id, name.trimmed(), address.trimmed(),
+                                             lat, lng,
+                                             qMax<ncs::MoneyCents>(0, price))) {
+                       replyBizErr(res, QStringLiteral("站不存在或保存失败"));
+                       return;
+                   }
+                   replyOk(res, nullptr);
+               });
+
+    srv_.Delete(R"(/api/admin/stations/(\d+))",
+                [this](const httplib::Request& req, httplib::Response& res) {
+                    if (req.matches.size() < 2) {
+                        reply(res, kCodeBadReq, "缺站 id", nullptr);
+                        return;
+                    }
+                    const int id = std::stoi(req.matches[1]);
+                    if (store_.countDevicesByStation(id) > 0) {
+                        replyBizErr(res, QStringLiteral("站下仍有电桩，禁止删除"));
+                        return;
+                    }
+                    if (!store_.deleteStationById(id)) {
+                        replyBizErr(res, QStringLiteral("站不存在或删除失败"));
+                        return;
+                    }
+                    replyOk(res, nullptr);
+                });
+
+    srv_.Post(R"(/api/admin/stations/(\d+)/devices)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺站 id", nullptr);
+                      return;
+                  }
+                  int count = 0, type = 0;
+                  double powerKw = 0;
+                  try {
+                      const auto j = json::parse(req.body);
+                      count = j.value("count", 0);
+                      type = j.value("type", 0);
+                      powerKw = j.value("power_kw", 0.0);
+                  } catch (...) {
+                      reply(res, kCodeBadReq, "body 需 count/type/power_kw", nullptr);
+                      return;
+                  }
+                  count = qBound(1, count, 200);
+                  if (type != 0 && type != 1) {
+                      replyBizErr(res, QStringLiteral("type 需 0(快)/1(慢)"));
+                      return;
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  if (!store_.createDevices(id, type, count, powerKw)) {
+                      replyBizErr(res, QStringLiteral("站不存在或建桩失败"));
+                      return;
+                  }
+                  replyOk(res, json{{"created", count}});
+              });
+
+    srv_.Delete(R"(/api/admin/devices/(\d+))",
+                [this](const httplib::Request& req, httplib::Response& res) {
+                    if (req.matches.size() < 2) {
+                        reply(res, kCodeBadReq, "缺桩 id", nullptr);
+                        return;
+                    }
+                    const int id = std::stoi(req.matches[1]);
+                    const int r = store_.deleteDeviceIfIdle(id);
+                    if (r < 0) {
+                        replyBizErr(res, QStringLiteral("桩不存在"));
+                        return;
+                    }
+                    if (r == 0) {
+                        replyBizErr(res, QStringLiteral("桩使用中(非空闲)，禁止删除"));
+                        return;
+                    }
+                    replyOk(res, nullptr);
+                });
+}
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------
 
 bool BackendApp::startSimListener(int port) {

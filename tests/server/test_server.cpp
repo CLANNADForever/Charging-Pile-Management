@@ -199,6 +199,75 @@ int main() {
                   av->body.find("avatar_13800138000.png") != std::string::npos,
               "http: avatar png upload");
 
+        // ===== 管理端(B1) HTTP 覆盖 =====
+        auto lg = cli.Post("/api/admin/login",
+                           "{\"username\":\"admin\",\"password\":\"admin123\"}",
+                           "application/json");
+        check(lg && lg->body.find("\"code\":0") != std::string::npos &&
+                  lg->body.find("\"role\":\"admin\"") != std::string::npos,
+              "admin: login ok");
+
+        auto users = cli.Get("/api/admin/users?phone=13800138000");
+        check(users && users->body.find("\"code\":0") != std::string::npos &&
+                  users->body.find("13800138000") != std::string::npos,
+              "admin: search user");
+        int uid = -1;
+        {
+            const auto j = nlohmann::json::parse(users->body);
+            if (!j["data"].empty())
+                uid = j["data"][0]["id"].get<int>();
+        }
+        if (uid > 0) {
+            auto fr = cli.Post("/api/admin/users/" + std::to_string(uid) + "/freeze",
+                               "{\"frozen\":true}", "application/json");
+            check(fr && fr->body.find("\"code\":0") != std::string::npos,
+                  "admin: freeze user");
+            auto uf = cli.Post("/api/admin/users/" + std::to_string(uid) + "/freeze",
+                               "{\"frozen\":false}", "application/json");
+            check(uf && uf->body.find("\"code\":0") != std::string::npos,
+                  "admin: unfreeze user");
+        }
+
+        auto ns = cli.Post("/api/admin/stations",
+                           "{\"name\":\"测试站\",\"address\":\"北京测试路1号\","
+                           "\"latitude\":39.9,\"longitude\":116.3,\"price_cents\":150}",
+                           "application/json");
+        check(ns && ns->body.find("\"code\":0") != std::string::npos,
+              "admin: create station");
+        int sid = -1;
+        { const auto j = nlohmann::json::parse(ns->body); sid = j["data"]["id"].get<int>(); }
+        if (sid > 0) {
+            auto nd = cli.Post("/api/admin/stations/" + std::to_string(sid) + "/devices",
+                               "{\"count\":2,\"type\":0,\"power_kw\":120}",
+                               "application/json");
+            check(nd && nd->body.find("\"code\":0") != std::string::npos,
+                  "admin: create 2 devices");
+
+            auto ds = cli.Delete("/api/admin/stations/" + std::to_string(sid));
+            check(ds && ds->body.find("\"code\":1") != std::string::npos,
+                  "admin: delete station with devices REJECTED");
+
+            auto dv = cli.Get("/api/stations/" + std::to_string(sid) + "/devices");
+            int did0 = -1, did1 = -1;
+            {
+                const auto j = nlohmann::json::parse(dv->body);
+                if (j["data"].size() >= 2) {
+                    did0 = j["data"][0]["id"].get<int>();
+                    did1 = j["data"][1]["id"].get<int>();
+                }
+            }
+            if (did0 > 0) {
+                auto dd = cli.Delete("/api/admin/devices/" + std::to_string(did0));
+                check(dd && dd->body.find("\"code\":0") != std::string::npos,
+                      "admin: delete idle device");
+            }
+            if (did1 > 0) {
+                cli.Delete("/api/admin/devices/" + std::to_string(did1));
+                auto ds2 = cli.Delete("/api/admin/stations/" + std::to_string(sid));
+                check(ds2 && ds2->body.find("\"code\":0") != std::string::npos,
+                      "admin: delete empty station ok");
+            }
+        }
         app.server().stop();
         th.join();
     }
