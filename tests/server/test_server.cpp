@@ -13,6 +13,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <sqlite3.h>
 
 #include "BackendApp.h"
 #include <nlohmann/json.hpp>
@@ -821,6 +822,53 @@ int main() {
               "w1: same station fast(200x2=400) vs slow(140x2=280) bills differ");
     }
     ::unlink(w1Db.toLocal8Bit().constData());
+
+    // 11) 老库升级回归：R1/R2 列 ALTER 后，分档价列需回填 price_cents(避免慢/超 0 元)
+    const QString upDb = tempDb("up");
+    {
+        sqlite3* raw = nullptr;
+        check(sqlite3_open(upDb.toUtf8().constData(), &raw) == SQLITE_OK,
+              "up: open raw old-schema db");
+        const char* ddl =
+            "CREATE TABLE stations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+            " address TEXT NOT NULL, latitude REAL NOT NULL DEFAULT 0,"
+            " longitude REAL NOT NULL DEFAULT 0, total_piles INTEGER NOT NULL DEFAULT 0,"
+            " price_cents INTEGER NOT NULL DEFAULT 0, free_piles INTEGER NOT NULL DEFAULT 0);"
+            "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL UNIQUE,"
+            " nickname TEXT NOT NULL, balance_cents INTEGER NOT NULL DEFAULT 0,"
+            " status INTEGER NOT NULL DEFAULT 0, registered_at TEXT NOT NULL);"
+            "CREATE TABLE devices (id INTEGER PRIMARY KEY AUTOINCREMENT, station_id INTEGER NOT NULL,"
+            " type INTEGER NOT NULL DEFAULT 0, state INTEGER NOT NULL DEFAULT 0,"
+            " power_kw REAL NOT NULL DEFAULT 0, energy_kwh REAL NOT NULL DEFAULT 0);"
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL,"
+            " station_id INTEGER NOT NULL, device_id INTEGER NOT NULL,"
+            " unit_price_cents INTEGER NOT NULL DEFAULT 0, amount_cents INTEGER NOT NULL DEFAULT 0,"
+            " energy_kwh REAL NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0,"
+            " started_at TEXT NOT NULL, finished_at TEXT);"
+            "CREATE TABLE admins (username TEXT PRIMARY KEY, password TEXT NOT NULL);"
+            "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles)"
+            " VALUES ('旧站','旧地址',1.0,2.0,2,200,2);"
+            "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh)"
+            " VALUES (1,0,0,120,0),(1,0,0,7,0);"
+            "INSERT INTO users(phone,nickname,balance_cents,status,registered_at)"
+            " VALUES ('13800000000','u',0,0,'2026-01-01T00:00:00Z');";
+        char* err = nullptr;
+        check(sqlite3_exec(raw, ddl, nullptr, nullptr, &err) == SQLITE_OK,
+              "up: seed old-schema rows");
+        sqlite3_close(raw);
+
+        ncs::backend::Store st;
+        check(st.open(upDb), "up: open old db with new Store");
+        ncs::Station s;
+        st.getStationById(1, &s);
+        check(s.pricePerKwhCents == 200 && s.priceSlowCents == 200 &&
+                  s.priceUltraCents == 200,
+              "up: tier price cols added & backfilled to price_cents(=200)");
+        check(ncs::stationTierPriceCents(s, 7) == ncs::MoneyCents(200) &&
+                  ncs::stationTierPriceCents(s, 180) == ncs::MoneyCents(200),
+              "up: upgraded old station prices slow/ultra == fast(200)");
+    }
+    ::unlink(upDb.toLocal8Bit().constData());
 
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
