@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QDateTime>
 #include <QRandomGenerator>
+#include <QStringList>
 
 #include "billing.h"
 #include "phone.h"
@@ -67,6 +68,9 @@ json userToJson(const ncs::User& u) {
                 {"registered_at", iso.toStdString()}};
 }
 json stationToJson(const ncs::Station& s) {
+    json am = json::array();
+    for (const QString& n : ncs::stationAmenityNames(s.amenities))
+        am.push_back(n.toStdString());
     return json{{"id", s.id},
                 {"name", s.name.toStdString()},
                 {"address", s.address.toStdString()},
@@ -74,7 +78,15 @@ json stationToJson(const ncs::Station& s) {
                 {"longitude", s.longitude},
                 {"total_piles", s.totalPiles},
                 {"price_cents", s.pricePerKwhCents},
-                {"free_piles", s.freePiles}};
+                {"free_piles", s.freePiles},
+                // R1 运营属性
+                {"amenities_mask", s.amenities},
+                {"amenities", std::move(am)},
+                {"parking", s.parking},
+                {"location", s.location},
+                {"is_promo", s.isPromo},
+                {"open_hours", s.openHours.toStdString()},
+                {"min_charge_cents", s.minChargeCents}};
 }
 json deviceToJson(const ncs::Device& d) {
     return json{{"id", d.id},
@@ -683,9 +695,31 @@ void BackendApp::registerRoutes() {
                       replyBizErr(res, QStringLiteral("名称与地址不能为空"));
                       return;
                   }
+                  StationFields f;
+                  {
+                      try {
+                          const auto j = json::parse(req.body);
+                          if (j.contains("amenities_mask"))
+                              f.amenities = j.value("amenities_mask", 0);
+                          else if (j.contains("amenities") && j.at("amenities").is_array()) {
+                              QStringList names;
+                              for (const auto& v : j.at("amenities"))
+                                  names << QString::fromStdString(v.get<std::string>());
+                              f.amenities = ncs::stationAmenityMask(names);
+                          }
+                          f.parking = j.value("parking", 0);
+                          f.location = j.value("location", 0);
+                          f.isPromo = j.value("is_promo", false);
+                          if (j.contains("open_hours") && !j.at("open_hours").is_null())
+                              f.openHours = QString::fromStdString(
+                                  j.at("open_hours").get<std::string>());
+                          f.minChargeCents = j.value("min_charge_cents", 0LL);
+                      } catch (...) {
+                      }
+                  }
                   const int id = store_.createStation(
                       name.trimmed(), address.trimmed(), lat, lng,
-                      qMax<ncs::MoneyCents>(0, price));
+                      qMax<ncs::MoneyCents>(0, price), f);
                   const bool ok = id > 0;
                   store_.appendAudit(user, QStringLiteral("station.create"),
                                      QStringLiteral("新建站 %1").arg(name.trimmed()),
@@ -726,9 +760,30 @@ void BackendApp::registerRoutes() {
                        return;
                    }
                    const int id = std::stoi(req.matches[1]);
-                   const bool ok = store_.updateStation(
+                   StationFields f;
+                   {
+                       try {
+                           const auto j = json::parse(req.body);
+                           if (j.contains("amenities_mask"))
+                               f.amenities = j.value("amenities_mask", 0);
+                           else if (j.contains("amenities") && j.at("amenities").is_array()) {
+                               QStringList names;
+                               for (const auto& v : j.at("amenities"))
+                                   names << QString::fromStdString(v.get<std::string>());
+                               f.amenities = ncs::stationAmenityMask(names);
+                           }
+                           f.parking = j.value("parking", 0);
+                           f.location = j.value("location", 0);
+                           f.isPromo = j.value("is_promo", false);
+                           if (j.contains("open_hours") && !j.at("open_hours").is_null())
+                               f.openHours = QString::fromStdString(
+                                   j.at("open_hours").get<std::string>());
+                           f.minChargeCents = j.value("min_charge_cents", 0LL);
+                       } catch (...) {
+                       }
+                   }                   const bool ok = store_.updateStation(
                        id, name.trimmed(), address.trimmed(), lat, lng,
-                       qMax<ncs::MoneyCents>(0, price));
+                       qMax<ncs::MoneyCents>(0, price), f);
                    store_.appendAudit(user, QStringLiteral("station.update"),
                                       QStringLiteral("修改站 #%1").arg(id), ok);
                    if (!ok) {
