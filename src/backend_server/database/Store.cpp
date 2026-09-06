@@ -135,11 +135,27 @@ bool Store::open(const QString& dbPath) {
             {"price_slow_cents", "ALTER TABLE stations ADD COLUMN price_slow_cents INTEGER NOT NULL DEFAULT 0"},
             {"price_ultra_cents", "ALTER TABLE stations ADD COLUMN price_ultra_cents INTEGER NOT NULL DEFAULT 0"},
         };
+        bool addedTierCol = false;
         for (const auto& x : need) {
             if (cols.contains(QLatin1String(x.col)))
                 continue;
             char* err = nullptr;
-            if (sqlite3_exec(db_, x.ddl, nullptr, nullptr, &err) != SQLITE_OK)
+            if (sqlite3_exec(db_, x.ddl, nullptr, nullptr, &err) != SQLITE_OK) {
+                sqlite3_free(err);
+            } else if (QLatin1String(x.col) == QLatin1String("price_slow_cents") ||
+                       QLatin1String(x.col) == QLatin1String("price_ultra_cents")) {
+                addedTierCol = true;
+            }
+        }
+        // 老库升级：分档价列是这次新增的，旧站只有 price_cents。
+        // 回填 slow/ultra=price_cents(即快充档)，避免慢/超静默走快充兜底、API 暴露 0 元。
+        if (addedTierCol) {
+            char* err = nullptr;
+            if (sqlite3_exec(db_,
+                             "UPDATE stations SET price_slow_cents=price_cents, "
+                             "price_ultra_cents=price_cents "
+                             "WHERE price_slow_cents<=0 AND price_ultra_cents<=0",
+                             nullptr, nullptr, &err) != SQLITE_OK)
                 sqlite3_free(err);
         }
     }
