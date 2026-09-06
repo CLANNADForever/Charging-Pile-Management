@@ -104,6 +104,7 @@ public:
     bool createOrder(const ncs::Order& o, int* newId);
     bool getOrderById(int id, ncs::Order* out) const;
     bool updateOrderStatus(int id, int status);
+    bool setOrderChargeStarted(int id, const QString& isoUtc);  // R4 start 打点
     bool updateOrderSettled(int id, double energyKwh,
                             ncs::MoneyCents amountCents);
     bool updateOrderPaid(int id);

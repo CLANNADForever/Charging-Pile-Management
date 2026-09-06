@@ -37,6 +37,14 @@ PowerTier power_tier(double powerKw) {
     return PowerTier::Slow;
 }
 
+int soc_pct(const Order& o) {
+    if (o.batteryCapKwh <= 0)
+        return qBound(0, o.startSocPct, 100);
+    return qBound(0, static_cast<int>(qRound(
+                          o.startSocPct + o.energyKwh / o.batteryCapKwh * 100.0)),
+                  100);
+}
+
 MoneyCents stationTierPriceCents(const Station& s, double powerKw) {
     MoneyCents p = 0;
     switch (power_tier(powerKw)) {

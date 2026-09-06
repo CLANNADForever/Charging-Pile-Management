@@ -130,10 +130,13 @@ bool ChargeService::start(int orderId, QString* err) {
             *err = QStringLiteral("订单状态非预约，无法开始");
         return false;
     }
+    const QDateTime nowUtc = QDateTime::currentDateTimeUtc();
     if (!store_->setDeviceState(o.deviceId,
                                 static_cast<int>(ncs::DeviceState::Charging)) ||
         !store_->updateOrderStatus(orderId,
-                                   static_cast<int>(ncs::OrderStatus::Charging))) {
+                                   static_cast<int>(ncs::OrderStatus::Charging)) ||
+        !store_->setOrderChargeStarted(orderId,
+                                       nowUtc.toString(Qt::ISODate))) {
         if (err)
             *err = QStringLiteral("开始充电失败");
         return false;

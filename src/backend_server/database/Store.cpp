@@ -70,7 +70,9 @@ bool Store::open(const QString& dbPath) {
         " unit_price_cents INTEGER NOT NULL DEFAULT 0,"
         " amount_cents INTEGER NOT NULL DEFAULT 0,"
         " energy_kwh REAL NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0,"
-        " started_at TEXT NOT NULL, finished_at TEXT)",
+        " started_at TEXT NOT NULL, finished_at TEXT,"
+        " charge_started_at TEXT, battery_cap_kwh REAL NOT NULL DEFAULT 60,"
+        " start_soc_pct INTEGER NOT NULL DEFAULT 20)",
         "CREATE TABLE IF NOT EXISTS admins ("
         " username TEXT PRIMARY KEY, password TEXT NOT NULL,"
         " role TEXT NOT NULL DEFAULT 'super')",
@@ -156,6 +158,32 @@ bool Store::open(const QString& dbPath) {
                              "price_ultra_cents=price_cents "
                              "WHERE price_slow_cents<=0 AND price_ultra_cents<=0",
                              nullptr, nullptr, &err) != SQLITE_OK)
+                sqlite3_free(err);
+        }
+    }
+    // 老库补 orders 充电时刻/电池快照列(R4/R5)
+    {
+        sqlite3_stmt* st = nullptr;
+        QStringList ocols;
+        if (sqlite3_prepare_v2(db_, "PRAGMA table_info(orders)", -1, &st,
+                               nullptr) == SQLITE_OK) {
+            while (sqlite3_step(st) == SQLITE_ROW)
+                ocols << columnText(st, 1);
+        }
+        sqlite3_finalize(st);
+        const struct {
+            const char* col;
+            const char* ddl;
+        } need[] = {
+            {"charge_started_at", "ALTER TABLE orders ADD COLUMN charge_started_at TEXT"},
+            {"battery_cap_kwh", "ALTER TABLE orders ADD COLUMN battery_cap_kwh REAL NOT NULL DEFAULT 60"},
+            {"start_soc_pct", "ALTER TABLE orders ADD COLUMN start_soc_pct INTEGER NOT NULL DEFAULT 20"},
+        };
+        for (const auto& x : need) {
+            if (ocols.contains(QLatin1String(x.col)))
+                continue;
+            char* err = nullptr;
+            if (sqlite3_exec(db_, x.ddl, nullptr, nullptr, &err) != SQLITE_OK)
                 sqlite3_free(err);
         }
     }
@@ -496,7 +524,7 @@ bool Store::getOrderById(int id, ncs::Order* out) const {
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(db_,
                            "SELECT id,phone,station_id,device_id,unit_price_cents,"
-                           "amount_cents,energy_kwh,status,started_at,finished_at "
+                           "amount_cents,energy_kwh,status,started_at,finished_at,charge_started_at,battery_cap_kwh,start_soc_pct "
                            "FROM orders WHERE id=?",
                            -1, &st, nullptr) != SQLITE_OK)
         return false;
@@ -515,6 +543,9 @@ bool Store::getOrderById(int id, ncs::Order* out) const {
         const QString f = columnText(st, 9);
         if (!f.isEmpty())
             out->finishedAt = fromDbIso(f);
+        out->chargeStartedAt = fromDbIso(columnText(st, 10));
+        out->batteryCapKwh = sqlite3_column_double(st, 11);
+        out->startSocPct = sqlite3_column_int(st, 12);
     }
     sqlite3_finalize(st);
     return found;
@@ -529,6 +560,22 @@ bool Store::updateOrderStatus(int id, int status) {
                            &st, nullptr) != SQLITE_OK)
         return false;
     sqlite3_bind_int(st, 1, status);
+    sqlite3_bind_int(st, 2, id);
+    const int rc = sqlite3_step(st);
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE;
+}
+
+bool Store::setOrderChargeStarted(int id, const QString& isoUtc) {
+    auto lk = lockGuard();
+    if (!db_)
+        return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE orders SET charge_started_at=? WHERE id=?",
+                           -1, &st, nullptr) != SQLITE_OK)
+        return false;
+    const QByteArray iso = isoUtc.toUtf8();
+    sqlite3_bind_text(st, 1, iso.constData(), iso.size(), SQLITE_TRANSIENT);
     sqlite3_bind_int(st, 2, id);
     const int rc = sqlite3_step(st);
     sqlite3_finalize(st);
@@ -675,7 +722,7 @@ QVector<ncs::Order> Store::listActiveOrdersByPhone(const QString& phone) const {
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(db_,
                            "SELECT id,phone,station_id,device_id,unit_price_cents,"
-                           "amount_cents,energy_kwh,status,started_at,finished_at "
+                           "amount_cents,energy_kwh,status,started_at,finished_at,charge_started_at,battery_cap_kwh,start_soc_pct "
                            "FROM orders WHERE phone=? AND status IN (0,1,2) ORDER BY id DESC",
                            -1, &st, nullptr) != SQLITE_OK)
         return out;
@@ -695,6 +742,9 @@ QVector<ncs::Order> Store::listActiveOrdersByPhone(const QString& phone) const {
         const QString f = columnText(st, 9);
         if (!f.isEmpty())
             o.finishedAt = fromDbIso(f);
+        o.chargeStartedAt = fromDbIso(columnText(st, 10));
+        o.batteryCapKwh = sqlite3_column_double(st, 11);
+        o.startSocPct = sqlite3_column_int(st, 12);
         out.push_back(o);
     }
     sqlite3_finalize(st);
@@ -746,7 +796,7 @@ QVector<ncs::Order> Store::listHistoryByPhone(const QString& phone, int limit,
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(db_,
                            "SELECT id,phone,station_id,device_id,unit_price_cents,"
-                           "amount_cents,energy_kwh,status,started_at,finished_at "
+                           "amount_cents,energy_kwh,status,started_at,finished_at,charge_started_at,battery_cap_kwh,start_soc_pct "
                            "FROM orders WHERE phone=? AND status=3 "
                            "ORDER BY id DESC LIMIT ? OFFSET ?",
                            -1, &st, nullptr) != SQLITE_OK)
@@ -769,6 +819,9 @@ QVector<ncs::Order> Store::listHistoryByPhone(const QString& phone, int limit,
         const QString f = columnText(st, 9);
         if (!f.isEmpty())
             o.finishedAt = fromDbIso(f);
+        o.chargeStartedAt = fromDbIso(columnText(st, 10));
+        o.batteryCapKwh = sqlite3_column_double(st, 11);
+        o.startSocPct = sqlite3_column_int(st, 12);
         out.push_back(o);
     }
     sqlite3_finalize(st);

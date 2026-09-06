@@ -106,12 +106,21 @@ struct Order {
     int stationId = 0;
     int deviceId = 0;
     QDateTime startedAt;    // 预约时间(=开单时间)
+    QDateTime chargeStartedAt;  // R4 充电开始时刻(预约时不设，start 写入)
     QDateTime finishedAt;
     double energyKwh = 0.0;
     MoneyCents unitPriceCents = 0;  // 单价快照 分/度
     MoneyCents amountCents = 0;     // 应收金额(分)
     OrderStatus status = OrderStatus::Reserved;
+
+    // R5 标准电池快照(默认 60kWh / 起始 20%)
+    double batteryCapKwh = 60.0;
+    int startSocPct = 20;
 };
+
+// R5：SoC = clamp(startSoc + energy/cap*100, 0..100)
+int soc_pct(const Order& o);
+MoneyCents stationTierPriceCents(const Station& s, double powerKw);
 
 }  // namespace ncs
 
