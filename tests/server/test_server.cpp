@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <QString>
+#include <QStringList>
 
 #include "BackendApp.h"
 #include <nlohmann/json.hpp>
@@ -285,6 +286,56 @@ int main() {
             }
         }
 
+        // R1：站运营属性 JSON 与建站持久化
+        {
+            auto pubs = cli.Get("/api/stations");
+            check(pubs && pubs->body.find("\"amenities_mask\":339") != std::string::npos &&
+                      pubs->body.find("\"is_promo\":true") != std::string::npos &&
+                      pubs->body.find("\"min_charge_cents\":100") != std::string::npos &&
+                      pubs->body.find("\"open_hours\":\"00:00-24:00\"") != std::string::npos,
+                  "R1: seeded station JSON has ops fields");
+            check(pubs && pubs->body.find("\xe5\x8d\xab\xe7\x94\x9f\xe9\x97\xb4") != std::string::npos,
+                  "R1: amenities array has 卫生间");
+            auto ns2 = postAuth("/api/admin/stations",
+                                "{\"name\":\"R1富字段站\",\"address\":\"测试路2号\","
+                                "\"latitude\":39.9,\"longitude\":116.4,\"price_cents\":300,"
+                                "\"amenities_mask\":11,\"parking\":1,\"location\":1,"
+                                "\"is_promo\":true,\"open_hours\":\"08:00-22:00\","
+                                "\"min_charge_cents\":500}");
+            int sid2 = -1;
+            { const auto j = nlohmann::json::parse(ns2->body);
+              if (ns2 && ns2->body.find("\"code\":0") != std::string::npos)
+                  sid2 = j["data"]["id"].get<int>(); }
+            check(sid2 > 0, "R1: create station with full fields");
+            if (sid2 > 0) {
+                auto qa = getAuth("/api/admin/stations?q=R1");
+                check(qa && qa->body.find("\"code\":0") != std::string::npos &&
+                          qa->body.find("\"amenities_mask\":11") != std::string::npos &&
+                          qa->body.find("\"parking\":1") != std::string::npos &&
+                          qa->body.find("\"min_charge_cents\":500") != std::string::npos &&
+                          qa->body.find("\"open_hours\":\"08:00-22:00\"") != std::string::npos,
+                      "R1: created station persists ops fields");
+                // 名字数组到 mask 的入库路径(用 amenities 名字数组建站)
+                auto ns3 = postAuth("/api/admin/stations",
+                                    "{\"name\":\"R1名字站\",\"address\":\"测试路3号\","
+                                    "\"latitude\":39.8,\"longitude\":116.5,\"price_cents\":200,"
+                                    "\"amenities\":[\"卫生间\",\"休息室\"]}");
+                int sid3 = -1;
+                { const auto j3 = nlohmann::json::parse(ns3->body);
+                  if (ns3 && ns3->body.find("\"code\":0") != std::string::npos)
+                      sid3 = j3["data"]["id"].get<int>(); }
+                check(sid3 > 0, "R1: create station with amenities name array");
+                if (sid3 > 0) {
+                    auto q3 = getAuth("/api/admin/stations?q=R1\xe5\x90\x8d\xe5\xad\x97");
+                    auto q3s = getAuth("/api/admin/stations?q=R1");
+                    check(q3s && q3s->body.find("\"amenities_mask\":3") != std::string::npos &&
+                              q3s->body.find("\"amenities\":[\"\xe5\x8d\xab\xe7\x94\x9f\xe9\x97\xb4\",\"\xe4\xbc\x91\xe6\x81\xaf\xe5\xae\xa4\"]") != std::string::npos,
+                          "R1: amenities name array -> mask 3");
+                    delAuth("/api/admin/stations/" + std::to_string(sid3));
+                }
+                delAuth("/api/admin/stations/" + std::to_string(sid2));
+            }
+        }
         // 设备列表筛选 + 运维/审计/统计查询(此时 seed 故障桩 #6 仍在 → state=2 total=1)
         {
             auto devs = getAuth("/api/admin/devices?state=2");
@@ -664,7 +715,52 @@ int main() {
         const auto agg = st.revenueWindow(QString(), QString());
         check(agg.orders == 0 && agg.cents == 0, "b2: revenue empty orders 0");
     }
-    ::unlink(b2Db.toLocal8Bit().constData());
+
+    // 9) R1：Station 运营属性(Store 直测)
+    const QString r1Db = tempDb("r1");
+    {
+        ncs::backend::Store st;
+        check(st.open(r1Db), "r1 store.open");
+        ncs::Station s1;
+        st.getStationById(1, &s1);
+        check(s1.amenities == 339 && s1.isPromo && s1.minChargeCents == 100 &&
+                  s1.parking == 1 && s1.location == 0 &&
+                  s1.openHours == QStringLiteral("00:00-24:00"),
+              "r1: seed station ops attributes");
+        const QStringList names = ncs::stationAmenityNames(s1.amenities);
+        check(names.contains(QStringLiteral("卫生间")) &&
+                  names.contains(QStringLiteral("有人值守")),
+              "r1: amenity names decode");
+        check(ncs::stationAmenityMask(names) == s1.amenities,
+              "r1: amenity name->mask roundtrip");
+        ncs::backend::StationFields f;
+        f.amenities = 3;
+        f.parking = 2;
+        f.location = 1;
+        f.isPromo = true;
+        f.openHours = QStringLiteral("08:00-22:00");
+        f.minChargeCents = 500;
+        const int id = st.createStation(QStringLiteral("R1Store站"),
+                                        QStringLiteral("测试路9号"), 39.5, 116.1,
+                                        ncs::MoneyCents(300), f);
+        check(id > 0, "r1: createStation with fields");
+        ncs::Station s2;
+        st.getStationById(id, &s2);
+        check(s2.amenities == 3 && s2.parking == 2 && s2.location == 1 &&
+                  s2.isPromo && s2.openHours == QStringLiteral("08:00-22:00") &&
+                  s2.minChargeCents == 500,
+              "r1: created station fields round-trip");
+        f.parking = 0;
+        f.isPromo = false;
+        f.minChargeCents = 0;
+        check(st.updateStation(id, s2.name, s2.address, s2.latitude, s2.longitude,
+                               s2.pricePerKwhCents, f),
+              "r1: updateStation fields");
+        st.getStationById(id, &s2);
+        check(s2.parking == 0 && !s2.isPromo && s2.minChargeCents == 0,
+              "r1: updated fields persisted");
+    }
+    ::unlink(r1Db.toLocal8Bit().constData());
 
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
