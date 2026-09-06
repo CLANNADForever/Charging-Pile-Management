@@ -473,10 +473,13 @@ void BackendApp::registerRoutes() {
                   }
                   const int id = std::stoi(req.matches[1]);
                   QString err;
-                  if (charge_->start(id, &err))
-                      replyOk(res, nullptr);
-                  else
+                  if (!charge_->start(id, &err)) {
                       replyBizErr(res, err);
+                      return;
+                  }
+                  ncs::Order o;
+                  store_.getOrderById(id, &o);  // 返回更新后订单(含 charge_started_at)
+                  replyOk(res, orderToJson(o));
               });
 
     srv_.Post(R"(/api/orders/(\d+)/finish)",

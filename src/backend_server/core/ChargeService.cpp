@@ -61,6 +61,11 @@ bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
             *err = QStringLiteral("账号已冻结");
         return false;
     }
+    if (u.balanceCents < 0) {  // 余额不允许为负(兜底历史遗留负数)
+        if (err)
+            *err = QStringLiteral("余额异常为负，请先充值");
+        return false;
+    }
     if (store_->countUnpaidByPhone(phone) > 0) {
         if (err)
             *err = QStringLiteral("存在未支付账单，请先在我的充电中支付");
@@ -218,7 +223,12 @@ bool ChargeService::pay(int orderId, QString* err) {
             *err = QStringLiteral("用户不存在");
         return false;
     }
-    const ncs::MoneyCents newBalance = u.balanceCents - o.amountCents;  // 允许欠费
+    if (o.amountCents > u.balanceCents) {  // 余额不允许为负：不足则拒绝支付
+        if (err)
+            *err = QStringLiteral("余额不足，请先充值");
+        return false;
+    }
+    const ncs::MoneyCents newBalance = u.balanceCents - o.amountCents;
     if (!store_->setBalanceCents(u.id, newBalance) ||
         !store_->updateOrderPaid(orderId)) {
         if (err)
