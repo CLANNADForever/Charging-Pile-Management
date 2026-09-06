@@ -4,6 +4,7 @@
 #include <mutex>
 #include <thread>
 #include <utility>
+#include <QMap>
 #include <QString>
 #include <QVector>
 
@@ -153,6 +154,7 @@ public:
     qint64 countDevicesAdmin(const DeviceFilter& f) const;
     RevenueAgg revenueWindow(const QString& fromIso,
                              const QString& toIso) const;  // 已支付订单; 空串=不设界
+    QMap<int, qint64> paidCount7dByStation() const;  // R11 近7日已支付单数(按站)
     QVector<DailyRevenue> dailyRevenue(int days) const;    // 含今天, 缺日补 0
     QVector<int> deviceStateCounts() const;                // 下标=DeviceState 值
     QVector<std::pair<int,int>> listDeviceStations() const; // (device_id, station_id)

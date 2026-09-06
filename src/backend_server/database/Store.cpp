@@ -1498,6 +1498,26 @@ QVector<int> Store::deviceStateCounts() const {
     return out;
 }
 
+QMap<int, qint64> Store::paidCount7dByStation() const {
+    QMap<int, qint64> out;
+    auto lk = lockGuard();
+    if (!db_)
+        return out;
+    sqlite3_stmt* st = nullptr;
+    const char* sql =
+        "SELECT station_id, COUNT(*) FROM orders WHERE status=3 AND finished_at >= ? "
+        "GROUP BY station_id";
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return out;
+    const QDateTime cutoff = QDateTime::currentDateTimeUtc().addDays(-7);
+    const QByteArray iso = cutoff.toString(Qt::ISODate).toUtf8();
+    sqlite3_bind_text(st, 1, iso.constData(), iso.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.insert(sqlite3_column_int(st, 0), sqlite3_column_int64(st, 1));
+    sqlite3_finalize(st);
+    return out;
+}
+
 QVector<std::pair<int,int>> Store::listDeviceStations() const {
     QVector<std::pair<int,int>> out;
     auto lk = lockGuard();

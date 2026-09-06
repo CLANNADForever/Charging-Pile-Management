@@ -5,10 +5,13 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <string>
 
 #include <QDate>
@@ -273,13 +276,153 @@ void BackendApp::registerRoutes() {
             replyBizErr(res, r.message);
     });
 
-    srv_.Get("/api/stations", [this](const httplib::Request&, httplib::Response& res) {
-        const auto stations = store_.listStations();
-        json arr = json::array();
-        for (const auto& st : stations)
-            arr.push_back(stationToJson(st));
-        replyOk(res, std::move(arr));
-    });
+    // R10 站富查询：无参数→兼容返回全部数组；带参数→{items,total,page,page_size}
+    // facet: q(名称/地址) amenities(power掩码) power_tier(slow/fast/ultra) parking location is_promo
+    // sort: distance(需 lat/lng)|price(最低档单价升)|recommend(近7日付费单数降)
+    srv_.Get("/api/stations",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 const auto hasP = [&req](const char* n) { return req.has_param(n); };
+                 const bool any = hasP("q") || hasP("amenities") || hasP("power_tier") ||
+                                  hasP("parking") || hasP("location") || hasP("is_promo") ||
+                                  hasP("sort") || hasP("lat") || hasP("lng") ||
+                                  hasP("radiusKm") || hasP("page") || hasP("page_size");
+                 const auto stations = store_.listStations();
+                 json arr = json::array();
+                 for (const auto& st : stations)
+                     arr.push_back(stationToJson(st));
+                 if (!any) {  // 兼容旧调用
+                     replyOk(res, std::move(arr));
+                     return;
+                 }
+                 const QString q =
+                     QString::fromStdString(req.get_param_value("q")).trimmed();
+                 const int amMask = intParam(req, "amenities", -1);
+                 const int parking = intParam(req, "parking", -1);
+                 const int location = intParam(req, "location", -1);
+                 const QString tier =
+                     QString::fromStdString(req.get_param_value("power_tier")).toLower();
+                 const bool hasPos = hasP("lat") && hasP("lng");
+                 const double lat = hasP("lat") ? std::atof(req.get_param_value("lat").c_str()) : 0.0;
+                 const double lng = hasP("lng") ? std::atof(req.get_param_value("lng").c_str()) : 0.0;
+                 const double radiusKm = hasP("radiusKm")
+                                             ? std::atof(req.get_param_value("radiusKm").c_str())
+                                             : -1.0;
+                 const QString sort =
+                     QString::fromStdString(req.get_param_value("sort")).toLower();
+                 const int page = std::max(1, intParam(req, "page", 1));
+                 const int pageSize = qBound(1, intParam(req, "page_size", 20), 100);
+
+                 const auto paid = store_.paidCount7dByStation();
+                 std::map<int, std::set<int>> tierBySt;
+                 for (const auto& st : stations)
+                     for (const auto& d : store_.listDevicesByStation(st.id))
+                         tierBySt[st.id].insert(static_cast<int>(ncs::power_tier(d.powerKw)));
+
+                 std::vector<ncs::Station> vs;
+                 for (const auto& st : stations) {
+                     if (!q.isEmpty() &&
+                         !(st.name.contains(q, Qt::CaseInsensitive) ||
+                           st.address.contains(q, Qt::CaseInsensitive)))
+                         continue;
+                     if (amMask >= 0 && (st.amenities & amMask) != amMask)
+                         continue;
+                     if (parking >= 0 && st.parking != parking)
+                         continue;
+                     if (location >= 0 && st.location != location)
+                         continue;
+                     if (hasP("is_promo")) {
+                         const std::string v = req.get_param_value("is_promo");
+                         const bool want = v != "0" && v != "false";
+                         if (want != st.isPromo)
+                             continue;
+                     }
+                     if (!tier.isEmpty()) {
+                         int tt = 1;
+                         if (tier == "slow") tt = 0;
+                         else if (tier == "fast") tt = 1;
+                         else if (tier == "ultra") tt = 2;
+                         const auto it = tierBySt.find(st.id);
+                         if (it == tierBySt.end() || it->second.count(tt) == 0)
+                             continue;
+                     }
+                     vs.push_back(st);
+                 }
+                 std::vector<double> dist(vs.size(), -1.0);
+                 if (hasPos) {
+                     for (std::size_t i = 0; i < vs.size(); ++i) {
+                         dist[i] = ncs::haversine_km(lat, lng, vs[i].latitude, vs[i].longitude);
+                         if (radiusKm >= 0 && dist[i] > radiusKm)
+                             dist[i] = -2.0;  // 标记剔除
+                     }
+                 }
+                 std::vector<int> idx;
+                 for (std::size_t i = 0; i < vs.size(); ++i)
+                     if (dist[i] != -2.0)
+                         idx.push_back(static_cast<int>(i));
+                 const auto priceLow = [](const ncs::Station& s) {
+                     ncs::MoneyCents m = s.pricePerKwhCents;
+                     if (s.priceSlowCents > 0 && (m <= 0 || s.priceSlowCents < m))
+                         m = s.priceSlowCents;
+                     if (s.priceUltraCents > 0 && (m <= 0 || s.priceUltraCents < m))
+                         m = s.priceUltraCents;
+                     return m;
+                 };
+                 if (sort == "price") {
+                     std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
+                         return priceLow(vs[static_cast<std::size_t>(a)]) <
+                                priceLow(vs[static_cast<std::size_t>(b)]);
+                     });
+                 } else if (sort == "recommend") {
+                     std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
+                         const qint64 ca = paid.value(vs[static_cast<std::size_t>(a)].id, 0);
+                         const qint64 cb = paid.value(vs[static_cast<std::size_t>(b)].id, 0);
+                         return ca > cb;
+                     });
+                 } else if (sort == "distance" && hasPos) {
+                     std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
+                         return dist[static_cast<std::size_t>(a)] <
+                                dist[static_cast<std::size_t>(b)];
+                     });
+                 }
+                 const int total = static_cast<int>(idx.size());
+                 json items = json::array();
+                 const int start = (page - 1) * pageSize;
+                 const int end = std::min(total, start + pageSize);
+                 for (int k = start; k < end; ++k) {
+                     const auto& st = vs[static_cast<std::size_t>(idx[static_cast<std::size_t>(k)])];
+                     json j = stationToJson(st);
+                     if (hasPos) {
+                         const double d =
+                             dist[static_cast<std::size_t>(idx[static_cast<std::size_t>(k)])];
+                         j["distance_km"] = std::round(d * 100.0) / 100.0;
+                     }
+                     items.push_back(std::move(j));
+                 }
+                 replyOk(res, json{{"items", std::move(items)},
+                                   {"total", total},
+                                   {"page", page},
+                                   {"page_size", pageSize}});
+             });
+
+    // R11 热门推荐：近7日付费单数前 N(空搜索首页用)
+    srv_.Get("/api/stations/hot",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 const int limit = qBound(1, intParam(req, "limit", 10), 50);
+                 const auto paid = store_.paidCount7dByStation();
+                 auto stations = store_.listStations();
+                 std::stable_sort(stations.begin(), stations.end(),
+                                  [&](const ncs::Station& a, const ncs::Station& b) {
+                                      const qint64 ca = paid.value(a.id, 0);
+                                      const qint64 cb = paid.value(b.id, 0);
+                                      if (ca != cb)
+                                          return ca > cb;
+                                      return a.id < b.id;
+                                  });
+                 json arr = json::array();
+                 for (int i = 0; i < stations.size() && i < limit; ++i)
+                     arr.push_back(stationToJson(stations[static_cast<std::size_t>(i)]));
+                 replyOk(res, std::move(arr));
+             });
 
     srv_.Get(R"(/api/stations/(\d+)/devices)",
              [this](const httplib::Request& req, httplib::Response& res) {

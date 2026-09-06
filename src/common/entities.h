@@ -80,6 +80,9 @@ struct Station {
     MoneyCents minChargeCents = 0;  // 起充金额(分)，0=不强制
 };
 
+// 球面距离(km，haversine)，供 R10 距离筛选/排序
+double haversine_km(double lat1, double lon1, double lat2, double lon2);
+
 // R1：配套设施 bitmask <-> 名称列表(固定 9 项顺序)
 QStringList stationAmenityNames(int mask);
 int stationAmenityMask(const QStringList& names);

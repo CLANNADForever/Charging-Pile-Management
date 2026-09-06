@@ -1,5 +1,7 @@
 #include "entities.h"
 
+#include <cmath>
+
 namespace ncs {
 const char* project_name() {
     return "NCS 充电桩管理平台";
@@ -18,6 +20,18 @@ QStringList stationAmenityNames(int mask) {
         if (mask & (1 << i))
             out << QString::fromUtf8(kAmenityNames[i]);
     return out;
+}
+
+double haversine_km(double lat1, double lon1, double lat2, double lon2) {
+    constexpr double kPi = 3.14159265358979323846;
+    const double r = 6371.0;
+    const auto rad = [](double d) { return d * kPi / 180.0; };
+    const double dLat = rad(lat2 - lat1);
+    const double dLon = rad(lon2 - lon1);
+    const double a = std::sin(dLat / 2) * std::sin(dLat / 2) +
+                     std::cos(rad(lat1)) * std::cos(rad(lat2)) *
+                         std::sin(dLon / 2) * std::sin(dLon / 2);
+    return 2 * r * std::asin(std::sqrt(a));
 }
 
 int stationAmenityMask(const QStringList& names) {
