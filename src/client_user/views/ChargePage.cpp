@@ -116,7 +116,8 @@ void ChargePage::resumeSession(const QString& phone, const ncs::Order& order) {
 }
 
 void ChargePage::applyOrder(const ncs::Order& o) {
-    cur_ = o;
+    if (o.id > 0)
+        cur_ = o;  // 防御后端 data:null(空订单不回填，避免把 cur_.id 清成 0)
 }
 
 void ChargePage::setPhase(Phase p) {

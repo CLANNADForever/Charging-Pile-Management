@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 
+#include <QMap>
+
 #include <functional>
 
 #include "entities.h"
@@ -59,8 +61,11 @@ private slots:
 private:
     void setCurrentUser(const ncs::User& u);
     void refreshAvatar();
+    void refreshMyActive();
 
     IUserService* userService_ = nullptr;
+    IChargeService* chargeService_ = nullptr;
+    QMap<int, ncs::Order> myActiveOrders_;  // deviceId -> 我的活跃单(预约/充电/待支付)
     QString userPhone_;
     ncs::User user_;
     int lastStationId_ = 0;

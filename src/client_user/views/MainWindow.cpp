@@ -25,7 +25,7 @@ namespace client {
 MainWindow::MainWindow(IUserService* userService,
                        IStationService* stationService,
                        IChargeService* chargeService, QWidget* parent)
-    : QMainWindow(parent), userService_(userService) {
+    : QMainWindow(parent), userService_(userService), chargeService_(chargeService) {
     setWindowTitle(QStringLiteral("NCS 车主端"));
     setObjectName(QStringLiteral("ncsUserMainWindow"));
     setFixedSize(420, 760);
@@ -111,7 +111,9 @@ void MainWindow::onStationChosen(int stationId) {
         lastStLng_ = st->longitude;
         detailPage_->setStation(*st);
     }
+    detailPage_->setMyActive({});
     detailPage_->load(stationId);
+    refreshMyActive();
     stack_->setCurrentIndex(3);
 }
 
@@ -122,7 +124,12 @@ void MainWindow::onDetailBack() {
 
 void MainWindow::onDeviceChosen(int deviceId) {
     chargeOrigin_ = 3;
-    chargePage_->startSession(userPhone_, deviceId);
+    const auto it = myActiveOrders_.find(deviceId);
+    if (it != myActiveOrders_.end()) {  // 我在这台桩有活跃单 → 直接进实时/结算
+        chargePage_->resumeSession(userPhone_, it.value());
+    } else {
+        chargePage_->startSession(userPhone_, deviceId);
+    }
     stack_->setCurrentIndex(4);
 }
 
@@ -141,6 +148,25 @@ void MainWindow::onChargeBack() {
             detailPage_->load(lastStationId_);
         stack_->setCurrentIndex(3);
     }
+}
+
+void MainWindow::refreshMyActive() {
+    if (!chargeService_)
+        return;
+    chargeService_->listActive(
+        userPhone_, [this](const QVector<ncs::Order>& orders, const QString& err) {
+            myActiveOrders_.clear();
+            if (!err.isEmpty())
+                return;
+            for (const auto& o : orders)
+                if (o.id > 0 && o.deviceId > 0 &&
+                    (o.status == ncs::OrderStatus::Reserved ||
+                     o.status == ncs::OrderStatus::Charging ||
+                     o.status == ncs::OrderStatus::Completed))
+                    myActiveOrders_.insert(o.deviceId, o);
+            if (detailPage_)
+                detailPage_->setMyActive(orders);
+        });
 }
 
 void MainWindow::onDetailNav() {
