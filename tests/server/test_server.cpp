@@ -629,6 +629,47 @@ int main() {
                     close(fdr);
                 }
             }
+            // R10/R11：站富查询与热门推荐
+            {
+                auto p0 = cli.Get("/api/stations");  // 无参兼容数组
+                check(p0 && p0->body.find("\"code\":0") != std::string::npos &&
+                          p0->body.find("\"name\":\"望京充电站\"") != std::string::npos &&
+                          p0->body.find("\"items\"") == std::string::npos,
+                      "R10: no-param /api/stations still plain array");
+                auto pq = cli.Get("/api/stations?q=%E4%B8%AD%E5%85%B3%E6%9D%91");
+                check(pq && pq->body.find("\"total\":1") != std::string::npos &&
+                          pq->body.find("中关村充电站") != std::string::npos,
+                      "R10: keyword q facet");
+                auto pa = cli.Get("/api/stations?amenities=339");
+                check(pa && pa->body.find("\"total\":1") != std::string::npos &&
+                          pa->body.find("\"name\":\"望京充电站\"") != std::string::npos,
+                      "R10: amenities bitmask facet");
+                auto pt = cli.Get("/api/stations?power_tier=fast");
+                check(pt && pt->body.find("\"total\":2") != std::string::npos,
+                      "R10: power_tier facet (fast -> 2 stations)");
+                auto pp = cli.Get("/api/stations?parking=1");
+                check(pp && pp->body.find("\"total\":1") != std::string::npos &&
+                          pp->body.find("\"name\":\"望京充电站\"") != std::string::npos,
+                      "R10: parking facet");
+                auto pd = cli.Get("/api/stations?lat=39.9&lng=116.3&radiusKm=60");
+                check(pd && pd->body.find("\"distance_km\"") != std::string::npos,
+                      "R10: lat/lng distance + radius");
+                auto ps = cli.Get("/api/stations?sort=price");
+                if (ps && ps->body.find("\"code\":0") != std::string::npos) {
+                    const auto j = nlohmann::json::parse(ps->body);
+                    const bool firstIsWangjing =
+                        !j["data"]["items"].empty() &&
+                        j["data"]["items"][0]["name"] == "望京充电站";
+                    check(firstIsWangjing, "R10: sort=price lowest first (望京 slow140)");
+                }
+                auto hot = cli.Get("/api/stations/hot?limit=3");
+                if (hot && hot->body.find("\"code\":0") != std::string::npos) {
+                    const auto j = nlohmann::json::parse(hot->body);
+                    const bool hotIsWangjing =
+                        !j["data"].empty() && j["data"][0]["name"] == "望京充电站";
+                    check(hotIsWangjing, "R11: hot top-1 = 望京(近7日有已支付单)");
+                }
+            }
             app.stopSimListener();
         }
         app.server().stop();
