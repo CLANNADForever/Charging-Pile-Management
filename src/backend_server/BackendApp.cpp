@@ -309,10 +309,17 @@ void BackendApp::registerRoutes() {
         }
         ncs::Order o;
         QString err;
-        if (charge_->reserve(phone, deviceId, &o, &err))
-            replyOk(res, orderToJson(o));
-        else
+        if (charge_->reserve(phone, deviceId, &o, &err)) {
+            json d = orderToJson(o);
+            if (o.startedAt.isValid())
+                d["expires_at"] = o.startedAt.toUTC()
+                                      .addSecs(reserveTimeoutSec_)
+                                      .toString(Qt::ISODate)
+                                      .toStdString();
+            replyOk(res, std::move(d));
+        } else {
             replyBizErr(res, err);
+        }
     });
 
     srv_.Post(R"(/api/orders/(\d+)/start)",
@@ -376,9 +383,70 @@ void BackendApp::registerRoutes() {
                  double energy = simEnergy(o.deviceId);
                  if (energy < 0.0)
                      energy = 0.0;
-                 replyOk(res, json{{"status", static_cast<int>(o.status)},
-                                   {"energy_kwh", energy},
-                                   {"amount_cents", ncs::charging_amount_cents(energy, o.unitPriceCents)}});
+                 const double power = simPowerKw(o.deviceId);
+                 ncs::Order socO = o;
+                 socO.energyKwh = energy;
+                 long long elapsed = 0;
+                 if (o.chargeStartedAt.isValid())
+                     elapsed = qMax<long long>(
+                         0, o.chargeStartedAt.secsTo(QDateTime::currentDateTimeUtc()));
+                 replyOk(res,
+                         json{{"status", static_cast<int>(o.status)},
+                              {"energy_kwh", energy},
+                              {"amount_cents",
+                               ncs::charging_amount_cents(energy, o.unitPriceCents)},
+                              {"power_kw", power >= 0 ? power : 0.0},
+                              {"soc_pct", ncs::soc_pct(socO)},
+                              {"elapsed_sec", elapsed}});
+             });
+
+    // R9 订单详情/小票(共用)
+    srv_.Get(R"(/api/orders/(\d+))",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 if (req.matches.size() < 2) {
+                     reply(res, kCodeBadReq, "缺订单 id", nullptr);
+                     return;
+                 }
+                 const int id = std::stoi(req.matches[1]);
+                 ncs::Order o;
+                 if (!store_.getOrderById(id, &o)) {
+                     replyBizErr(res, QStringLiteral("订单不存在"));
+                     return;
+                 }
+                 json j = orderToJson(o);
+                 ncs::Station st;
+                 if (store_.getStationById(o.stationId, &st))
+                     j["station_name"] = st.name.toStdString();
+                 ncs::Device dv;
+                 if (store_.getDeviceById(o.deviceId, &dv)) {
+                     j["device_power_kw"] = dv.powerKw;
+                     const char* tier = "fast";
+                     switch (ncs::power_tier(dv.powerKw)) {
+                         case ncs::PowerTier::Slow: tier = "slow"; break;
+                         case ncs::PowerTier::Ultra: tier = "ultra"; break;
+                         default: tier = "fast"; break;
+                     }
+                     j["power_tier"] = tier;
+                 }
+                 if (o.chargeStartedAt.isValid())
+                     j["charge_started_at"] =
+                         o.chargeStartedAt.toUTC().toString(Qt::ISODate).toStdString();
+                 long long dur = 0;
+                 if (o.chargeStartedAt.isValid()) {
+                     if (o.finishedAt.isValid())
+                         dur = o.chargeStartedAt.secsTo(o.finishedAt);
+                     else
+                         dur = qMax<long long>(
+                             0, o.chargeStartedAt.secsTo(QDateTime::currentDateTimeUtc()));
+                 }
+                 j["duration_sec"] = dur;
+                 j["soc_pct"] = ncs::soc_pct(o);
+                 j["battery_cap_kwh"] = o.batteryCapKwh;
+                 j["start_soc_pct"] = o.startSocPct;
+                 ncs::User u;
+                 if (store_.findUserByPhone(o.phone, &u))
+                     j["balance_cents"] = u.balanceCents;
+                 replyOk(res, std::move(j));
              });
 
     srv_.Post(R"(/api/orders/(\d+)/pay)",
@@ -1193,6 +1261,12 @@ double BackendApp::simEnergy(int deviceId) const {
     return it == deviceEnergy_.end() ? -1.0 : it->second;
 }
 
+double BackendApp::simPowerKw(int deviceId) const {
+    std::lock_guard<std::mutex> lk(simMu_);
+    const auto it = devicePower_.find(deviceId);
+    return it == devicePower_.end() ? -1.0 : it->second;
+}
+
 bool BackendApp::sendSimRestart(int deviceId) {
     std::lock_guard<std::mutex> lk(simMu_);
     const auto it = deviceFd_.find(deviceId);
@@ -1435,6 +1509,7 @@ void BackendApp::stopRestartSweeper() {
 bool BackendApp::startReserveSweeper(int timeoutSec) {
     if (!charge_ || sweepRunning_.load())
         return false;
+    reserveTimeoutSec_ = timeoutSec;
     sweepRunning_.store(true);
     sweepThread_ = std::thread([this, timeoutSec] {
         const int stepMs = std::max(1000, std::min(30000, timeoutSec * 1000 / 2));

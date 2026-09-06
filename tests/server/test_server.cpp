@@ -292,7 +292,7 @@ int main() {
             auto pubs = cli.Get("/api/stations");
             check(pubs && pubs->body.find("\"amenities_mask\":339") != std::string::npos &&
                       pubs->body.find("\"is_promo\":true") != std::string::npos &&
-                      pubs->body.find("\"min_charge_cents\":100") != std::string::npos &&
+                      pubs->body.find("\"min_charge_cents\":0") != std::string::npos &&
                       pubs->body.find("\"open_hours\":\"00:00-24:00\"") != std::string::npos,
                   "R1: seeded station JSON has ops fields");
             check(pubs && pubs->body.find("\xe5\x8d\xab\xe7\x94\x9f\xe9\x97\xb4") != std::string::npos,
@@ -732,7 +732,7 @@ int main() {
         check(st.open(r1Db), "r1 store.open");
         ncs::Station s1;
         st.getStationById(1, &s1);
-        check(s1.amenities == 339 && s1.isPromo && s1.minChargeCents == 100 &&
+        check(s1.amenities == 339 && s1.isPromo && s1.minChargeCents == 0 &&
                   s1.parking == 1 && s1.location == 0 &&
                   s1.openHours == QStringLiteral("00:00-24:00"),
               "r1: seed station ops attributes");

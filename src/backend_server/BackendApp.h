@@ -53,6 +53,7 @@ public:
     void unregisterSimFd(int fd);
     bool sendSimCommand(int deviceId, bool start);
     double simEnergy(int deviceId) const;
+    double simPowerKw(int deviceId) const;  // R8 live 实时功率(-1 无上报)
 
     // B2：实时注册表 / 会话 / 重启
     bool sendSimRestart(int deviceId);
@@ -98,6 +99,7 @@ private:
     std::thread simThread_;
     std::atomic<bool> sweepRunning_{false};
     std::thread sweepThread_;
+    int reserveTimeoutSec_ = 900;  // R7 预约截止(=超时配置)，默认 15 分钟
 
     mutable std::mutex simMu_;  // 保护以下 device* 实时注册表
     std::map<int, int> deviceFd_;          // deviceId -> 连接 fd(注册的模拟器)

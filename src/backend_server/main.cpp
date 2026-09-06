@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
                                 : QStringLiteral("ncs-backend.db");
     int httpPort = 8080;
     int simPort = 18000;
-    int reserveTimeoutSec = 300;  // 预约超时释放(秒)
+    int reserveTimeoutSec = 900;  // 预约超时释放(秒)，R6 默认 15 分钟
     int rebootSec = 5;            // 远程重启自动恢复超时(秒)
     if (argc > 2)
         httpPort = std::atoi(argv[2]);

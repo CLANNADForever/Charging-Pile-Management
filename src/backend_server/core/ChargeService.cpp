@@ -83,6 +83,12 @@ bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
             *err = QStringLiteral("所属站点不存在");
         return false;
     }
+    if (s.minChargeCents > 0 && u.balanceCents < s.minChargeCents) {
+        if (err)
+            *err = QStringLiteral("余额不足：该站起充需至少 %1 分")
+                       .arg(s.minChargeCents);
+        return false;
+    }
     ncs::Order o;
     o.phone = phone;
     o.stationId = d.stationId;

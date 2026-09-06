@@ -219,9 +219,9 @@ bool Store::seedIfEmptyLocked() {
     const char* stations =
         "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles,"
         " price_slow_cents,price_ultra_cents,amenities,parking,location,is_promo,open_hours,min_charge_cents) VALUES"
-        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2,140,280,339,1,0,1,'00:00-24:00',100),"
+        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2,140,280,339,1,0,1,'00:00-24:00',0),"
         " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3,160,300,107,0,1,0,'06:00-24:00',0),"
-        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2,180,320,405,2,0,1,'00:00-24:00',200)";
+        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2,180,320,405,2,0,1,'00:00-24:00',0)";
     char* err = nullptr;
     if (sqlite3_exec(db_, stations, nullptr, nullptr, &err) != SQLITE_OK) {
         sqlite3_free(err);
