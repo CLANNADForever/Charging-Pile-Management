@@ -516,6 +516,119 @@ int main() {
                     close(fd8);
                 }
             }
+            // R6/R7：低余额预约拒绝 + 预约截止时间
+            {
+                auto ms = postAuth("/api/admin/stations",
+                                   "{\"name\":\"起充站\",\"address\":\"门禁测试路\","
+                                   "\"latitude\":1.0,\"longitude\":2.0,\"price_cents\":200,"
+                                   "\"min_charge_cents\":500}");
+                int msid = -1;
+                { const auto j = nlohmann::json::parse(ms->body);
+                  if (ms && ms->body.find("\"code\":0") != std::string::npos)
+                      msid = j["data"]["id"].get<int>(); }
+                check(msid > 0, "R6: create station with min_charge 500");
+                int mdev = -1;
+                if (msid > 0) {
+                    postAuth("/api/admin/stations/" + std::to_string(msid) + "/devices",
+                             "{\"count\":1,\"type\":0,\"power_kw\":120}");
+                    auto dl = getAuth("/api/admin/devices?station_id=" + std::to_string(msid));
+                    { const auto j = nlohmann::json::parse(dl->body);
+                      if (dl && !j["data"]["items"].empty())
+                          mdev = j["data"]["items"][0]["id"].get<int>(); }
+                }
+                check(mdev > 0, "R6: device under min-charge station");
+                if (mdev > 0) {
+                    const std::string lowPhone = "13900009990";
+                    cli.Post("/api/auth/send-code",
+                             "{\"phone\":\"" + lowPhone + "\"}",
+                             "application/json");
+                    cli.Post("/api/auth/login",
+                             "{\"phone\":\"" + lowPhone + "\",\"code\":\"123456\"}",
+                             "application/json");
+                    auto lo = cli.Post("/api/orders",
+                                       "{\"phone\":\"" + lowPhone + "\",\"device_id\":" +
+                                           std::to_string(mdev) + "}",
+                                       "application/json");
+                    check(lo && lo->body.find("\"code\":1") != std::string::npos &&
+                              lo->body.find("\xe4\xbd\x99\xe9\xa2\x9d") != std::string::npos,
+                          "R6: low-balance reserve REJECTED");
+                    cli.Post("/api/wallet/recharge",
+                             "{\"phone\":\"" + lowPhone + "\",\"amount_cents\":600}",
+                             "application/json");
+                    auto okR = cli.Post("/api/orders",
+                                        "{\"phone\":\"" + lowPhone + "\",\"device_id\":" +
+                                            std::to_string(mdev) + "}",
+                                        "application/json");
+                    check(okR && okR->body.find("\"code\":0") != std::string::npos &&
+                              okR->body.find("\"expires_at\"") != std::string::npos,
+                          "R7: reserve ok & response has expires_at");
+                    int okId = -1;
+                    if (okR && okR->body.find("\"code\":0") != std::string::npos) {
+                        const auto j = nlohmann::json::parse(okR->body);
+                        okId = j["data"]["id"].get<int>();
+                        const std::string exp = j["data"]["expires_at"].get<std::string>();
+                        check(!exp.empty(), "R7: expires_at not empty");
+                    }
+                    if (okId > 0)
+                        cli.Post("/api/orders/" + std::to_string(okId) + "/cancel",
+                                 "{}", "application/json");
+                    delAuth("/api/admin/devices/" + std::to_string(mdev));
+                    delAuth("/api/admin/stations/" + std::to_string(msid));
+                }
+            }
+            // R8/R9：live 扩字段 + 订单详情/小票
+            {
+                const int fdr = socket(AF_INET, SOCK_STREAM, 0);
+                bool okR = false;
+                if (fdr >= 0) {
+                    sockaddr_in a{};
+                    a.sin_family = AF_INET;
+                    a.sin_port = htons(static_cast<uint16_t>(simPort2));
+                    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+                    okR = connect(fdr, reinterpret_cast<sockaddr*>(&a), sizeof(a)) == 0;
+                }
+                check(okR, "R8: sim connect for live");
+                if (okR) {
+                    sendLine(fdr, "{\"type\":\"register\",\"devices\":[1]}\n");
+                    auto rv = cli.Post("/api/orders",
+                                       "{\"phone\":\"13800138000\",\"device_id\":1}",
+                                       "application/json");
+                    int oid = -1;
+                    { const auto j = nlohmann::json::parse(rv->body);
+                      if (rv && rv->body.find("\"code\":0") != std::string::npos)
+                          oid = j["data"]["id"].get<int>(); }
+                    check(oid > 0, "R8: reserve dev1 for live");
+                    if (oid > 0) {
+                        cli.Post("/api/orders/" + std::to_string(oid) + "/start",
+                                 "{}", "application/json");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                        sendLine(fdr, "{\"type\":\"heartbeat\",\"device_id\":1,\"voltage\":220.0,"
+                                      "\"current\":100.0,\"temperature\":30.0,"
+                                      "\"power_kw\":120.0,\"energy_kwh\":1.0,\"sim_state\":1}\n");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        auto lv = cli.Get("/api/orders/" + std::to_string(oid) + "/live");
+                        check(lv && lv->body.find("\"code\":0") != std::string::npos &&
+                                  lv->body.find("\"soc_pct\"") != std::string::npos &&
+                                  lv->body.find("\"elapsed_sec\"") != std::string::npos &&
+                                  lv->body.find("\"power_kw\":120.0") != std::string::npos &&
+                                  lv->body.find("\"energy_kwh\":1.0") != std::string::npos,
+                              "R8: live has power/soc/elapsed + energy");
+                        auto dt = cli.Get("/api/orders/" + std::to_string(oid));
+                        check(dt && dt->body.find("\"code\":0") != std::string::npos &&
+                                  dt->body.find("\"station_name\"") != std::string::npos &&
+                                  dt->body.find("\"power_tier\":\"fast\"") != std::string::npos &&
+                                  dt->body.find("\"charge_started_at\"") != std::string::npos &&
+                                  dt->body.find("\"duration_sec\"") != std::string::npos &&
+                                  dt->body.find("\"balance_cents\"") != std::string::npos,
+                              "R9: order detail has station/tier/charge/duration/balance");
+                        cli.Post("/api/orders/" + std::to_string(oid) + "/finish",
+                                 "{}", "application/json");
+                        cli.Post("/api/orders/" + std::to_string(oid) + "/pay",
+                                 "{}", "application/json");
+                    }
+                    close(fdr);
+                }
+            }
             app.stopSimListener();
         }
         app.server().stop();
@@ -869,6 +982,38 @@ int main() {
               "up: upgraded old station prices slow/ultra == fast(200)");
     }
     ::unlink(upDb.toLocal8Bit().constData());
+
+
+    // 12) R4/R5：充电开始时刻打点 + SoC helper
+    const QString r45Db = tempDb("r45");
+    {
+        ncs::backend::Store st;
+        check(st.open(r45Db), "r45 store.open");
+        ncs::User u;
+        st.ensureUserByPhone(QStringLiteral("13800138000"), &u);
+        ncs::backend::ChargeService cs(&st, [](int, bool) {}, [](int) { return 30.0; });
+        ncs::Order o;
+        QString err;
+        check(cs.reserve(QStringLiteral("13800138000"), 1, &o, &err), "r45: reserve dev1");
+        ncs::Order reserved;
+        st.getOrderById(o.id, &reserved);
+        check(!reserved.chargeStartedAt.isValid(),
+              "r45: reserve does NOT set charge_started_at");
+        check(cs.start(o.id, &err), "r45: start ok");
+        st.getOrderById(o.id, &reserved);
+        check(reserved.chargeStartedAt.isValid() &&
+                  reserved.status == ncs::OrderStatus::Charging &&
+                  reserved.batteryCapKwh == 60.0 && reserved.startSocPct == 20,
+              "r45: start stamps charge_started_at + battery snapshot(60/20)");
+        ncs::Order mid = reserved;
+        mid.energyKwh = 30.0;
+        check(ncs::soc_pct(mid) == 70, "r45: soc = 20 + 30/60*100 = 70");
+        ncs::Order over = mid;
+        over.energyKwh = 200.0;
+        check(ncs::soc_pct(over) == 100, "r45: soc clamped at 100");
+        cs.finish(o.id, &err);
+    }
+    ::unlink(r45Db.toLocal8Bit().constData());
 
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
