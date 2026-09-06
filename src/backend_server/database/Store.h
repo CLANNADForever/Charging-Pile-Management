@@ -56,6 +56,16 @@ struct DailyRevenue {
     double energyKwh = 0.0;
 };
 
+// R1 建/改站扩展属性(缺省全默认，不破坏旧调用)
+struct StationFields {
+    int amenities = 0;
+    int parking = 0;
+    int location = 0;
+    bool isPromo = false;
+    QString openHours;
+    ncs::MoneyCents minChargeCents = 0;
+};
+
 // SQLite 持久层：SQLite C API + 互斥锁串行化。单方法原子；
 // 跨方法业务原子(预约/结算)由上层(ChargeService)再包一把锁。
 class Store {
@@ -112,9 +122,11 @@ public:
                                    int statusFilter = 0) const;  // 0=全部 1=正常 2=冻结
     bool setUserStatus(int userId, int status);
     int createStation(const QString& name, const QString& address,
-                      double lat, double lng, ncs::MoneyCents priceCents);
+                      double lat, double lng, ncs::MoneyCents priceCents,
+                      const StationFields& f = StationFields());
     bool updateStation(int id, const QString& name, const QString& address,
-                       double lat, double lng, ncs::MoneyCents priceCents);
+                       double lat, double lng, ncs::MoneyCents priceCents,
+                       const StationFields& f = StationFields());
     qint64 countDevicesByStation(int stationId) const;
     bool deleteStationById(int id);
     // 批量建桩：1=成功 -1=站不存在 -2=插桩失败 -3=计数更新失败(整批事务)

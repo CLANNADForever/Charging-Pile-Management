@@ -7,6 +7,7 @@
 
 #include <QDateTime>
 #include <QString>
+#include <QStringList>
 
 #include "money.h"
 
@@ -65,7 +66,19 @@ struct Station {
     int totalPiles = 0;
     int freePiles = 0;              // 由预约/结算维护
     MoneyCents pricePerKwhCents = 0;  // 充电单价 分/度(元/度 * 100)
+
+    // R1 运营属性
+    int amenities = 0;        // 9 位 bitmask: 卫生间/休息室/餐饮/雨棚/便利店/自动售货机/饮用水/可洗车/有人值守
+    int parking = 0;          // 0 无标注 / 1 停车减免 / 2 收费停车
+    int location = 0;         // 0 地上 / 1 地下
+    bool isPromo = false;     // 特惠站
+    QString openHours;        // 营业时间(text，可空)
+    MoneyCents minChargeCents = 0;  // 起充金额(分)，0=不强制
 };
+
+// R1：配套设施 bitmask <-> 名称列表(固定 9 项顺序)
+QStringList stationAmenityNames(int mask);
+int stationAmenityMask(const QStringList& names);
 
 // 充电订单状态
 enum class OrderStatus : int {
