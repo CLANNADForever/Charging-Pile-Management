@@ -185,9 +185,9 @@ bool Store::seedIfEmptyLocked() {
     }
     const char* devices =
         "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES"
-        " (1,0,0,120.0,0.0),(1,0,0,120.0,0.0),(1,0,1,120.0,12.5),"
-        " (2,1,0,7.0,0.0),(2,1,0,7.0,0.0),(2,1,2,0.0,3.2),(2,1,0,7.0,0.0),"
-        " (3,0,0,180.0,0.0),(3,0,0,180.0,0.0)";
+        " (1,0,0,120.0,0.0),(1,1,0,7.0,0.0),(1,0,1,180.0,12.5),"
+        " (2,0,0,120.0,0.0),(2,1,0,7.0,0.0),(2,0,2,180.0,3.2),(2,0,0,120.0,0.0),"
+        " (3,1,0,7.0,0.0),(3,0,0,180.0,0.0)";
     if (sqlite3_exec(db_, devices, nullptr, nullptr, &err) != SQLITE_OK) {
         sqlite3_free(err);
         return false;

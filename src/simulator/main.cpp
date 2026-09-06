@@ -20,8 +20,10 @@
 
 namespace {
 
+// 功率口径(R3)：id%3==0→超充180 / ==1→快充120 / ==2→慢充7；与 seed/DB 三档一致
 double devicePowerKw(int deviceId) {
-    return (deviceId % 2 == 0) ? 120.0 : 7.0;  // 快/慢桩演示分布
+    const int r = deviceId % 3;
+    return r == 0 ? 180.0 : (r == 1 ? 120.0 : 7.0);
 }
 
 long long nowMs() {

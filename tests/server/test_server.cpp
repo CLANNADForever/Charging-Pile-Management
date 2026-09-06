@@ -336,6 +336,14 @@ int main() {
                 delAuth("/api/admin/stations/" + std::to_string(sid2));
             }
         }
+        // R2/R3：seed 三档价 JSON
+        {
+            auto p2 = cli.Get("/api/stations");
+            check(p2 && p2->body.find("\"price_slow_cents\":140") != std::string::npos &&
+                      p2->body.find("\"price_fast_cents\":200") != std::string::npos &&
+                      p2->body.find("\"price_ultra_cents\":280") != std::string::npos,
+                  "R2: seeded station three-tier prices in JSON");
+        }
         // 设备列表筛选 + 运维/审计/统计查询(此时 seed 故障桩 #6 仍在 → state=2 total=1)
         {
             auto devs = getAuth("/api/admin/devices?state=2");
@@ -760,7 +768,59 @@ int main() {
         check(s2.parking == 0 && !s2.isPromo && s2.minChargeCents == 0,
               "r1: updated fields persisted");
     }
-    ::unlink(r1Db.toLocal8Bit().constData());
+
+    // 10) R2/R3：分档计价 / 功率档分布 / 同站异档不同账单
+    const QString w1Db = tempDb("w1");
+    {
+        ncs::backend::Store st;
+        check(st.open(w1Db), "w1 store.open");
+        check(ncs::power_tier(7) == ncs::PowerTier::Slow &&
+                  ncs::power_tier(30) == ncs::PowerTier::Fast &&
+                  ncs::power_tier(120) == ncs::PowerTier::Fast &&
+                  ncs::power_tier(179) == ncs::PowerTier::Fast &&
+                  ncs::power_tier(180) == ncs::PowerTier::Ultra &&
+                  ncs::power_tier(250) == ncs::PowerTier::Ultra,
+              "w1: power_tier boundaries");
+        bool hasSlow = false, hasFast = false, hasUltra = false;
+        for (int i = 1; i <= 3; ++i)
+            for (const auto& d : st.listDevicesByStation(i)) {
+                const auto t = ncs::power_tier(d.powerKw);
+                if (t == ncs::PowerTier::Slow)
+                    hasSlow = true;
+                else if (t == ncs::PowerTier::Fast)
+                    hasFast = true;
+                else if (t == ncs::PowerTier::Ultra)
+                    hasUltra = true;
+            }
+        check(hasSlow && hasFast && hasUltra,
+              "w1: seed devices cover slow/fast/ultra tiers");
+        ncs::Station s1;
+        st.getStationById(1, &s1);
+        check(s1.priceSlowCents == 140 && s1.priceUltraCents == 280,
+              "w1: seed station tier prices persisted");
+        ncs::Station fallback = s1;
+        fallback.priceSlowCents = 0;
+        check(ncs::stationTierPriceCents(fallback, 7) == ncs::MoneyCents(200),
+              "w1: missing slow tier falls back to fast");
+        ncs::backend::ChargeService cs(&st, [](int, bool) {}, [](int) { return 2.0; });
+        auto bill = [&](const QString& phone, int dev) {
+            ncs::User u;
+            st.ensureUserByPhone(phone, &u);
+            ncs::Order o;
+            QString err;
+            cs.reserve(phone, dev, &o, &err);
+            cs.start(o.id, &err);
+            cs.finish(o.id, &err);
+            ncs::Order done;
+            st.getOrderById(o.id, &done);
+            return done.amountCents;
+        };
+        const ncs::MoneyCents fastAmt = bill(QStringLiteral("13900000001"), 1);
+        const ncs::MoneyCents slowAmt = bill(QStringLiteral("13900000002"), 2);
+        check(fastAmt == ncs::MoneyCents(400) && slowAmt == ncs::MoneyCents(280),
+              "w1: same station fast(200x2=400) vs slow(140x2=280) bills differ");
+    }
+    ::unlink(w1Db.toLocal8Bit().constData());
 
     ::unlink(storeDb.toLocal8Bit().constData());
     ::unlink(concDb.toLocal8Bit().constData());
