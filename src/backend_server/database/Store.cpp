@@ -56,6 +56,7 @@ bool Store::open(const QString& dbPath) {
         " address TEXT NOT NULL, latitude REAL NOT NULL DEFAULT 0,"
         " longitude REAL NOT NULL DEFAULT 0, total_piles INTEGER NOT NULL DEFAULT 0,"
         " price_cents INTEGER NOT NULL DEFAULT 0, free_piles INTEGER NOT NULL DEFAULT 0,"
+        " price_slow_cents INTEGER NOT NULL DEFAULT 0, price_ultra_cents INTEGER NOT NULL DEFAULT 0,"
         " amenities INTEGER NOT NULL DEFAULT 0, parking INTEGER NOT NULL DEFAULT 0,"
         " location INTEGER NOT NULL DEFAULT 0, is_promo INTEGER NOT NULL DEFAULT 0,"
         " open_hours TEXT, min_charge_cents INTEGER NOT NULL DEFAULT 0)",
@@ -131,6 +132,8 @@ bool Store::open(const QString& dbPath) {
             {"is_promo", "ALTER TABLE stations ADD COLUMN is_promo INTEGER NOT NULL DEFAULT 0"},
             {"open_hours", "ALTER TABLE stations ADD COLUMN open_hours TEXT"},
             {"min_charge_cents", "ALTER TABLE stations ADD COLUMN min_charge_cents INTEGER NOT NULL DEFAULT 0"},
+            {"price_slow_cents", "ALTER TABLE stations ADD COLUMN price_slow_cents INTEGER NOT NULL DEFAULT 0"},
+            {"price_ultra_cents", "ALTER TABLE stations ADD COLUMN price_ultra_cents INTEGER NOT NULL DEFAULT 0"},
         };
         for (const auto& x : need) {
             if (cols.contains(QLatin1String(x.col)))
@@ -171,10 +174,10 @@ bool Store::seedIfEmptyLocked() {
 
     const char* stations =
         "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles,"
-        " amenities,parking,location,is_promo,open_hours,min_charge_cents) VALUES"
-        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2,339,1,0,1,'00:00-24:00',100),"
-        " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3,107,0,1,0,'06:00-24:00',0),"
-        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2,405,2,0,1,'00:00-24:00',200)";
+        " price_slow_cents,price_ultra_cents,amenities,parking,location,is_promo,open_hours,min_charge_cents) VALUES"
+        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2,140,280,339,1,0,1,'00:00-24:00',100),"
+        " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3,160,300,107,0,1,0,'06:00-24:00',0),"
+        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2,180,320,405,2,0,1,'00:00-24:00',200)";
     char* err = nullptr;
     if (sqlite3_exec(db_, stations, nullptr, nullptr, &err) != SQLITE_OK) {
         sqlite3_free(err);
@@ -295,7 +298,8 @@ QVector<ncs::Station> Store::listStations() const {
     if (sqlite3_prepare_v2(db_,
                            "SELECT id,name,address,latitude,longitude,total_piles,"
                            "price_cents,free_piles,amenities,parking,location,is_promo,"
-                           "open_hours,min_charge_cents FROM stations ORDER BY id",
+                           "open_hours,min_charge_cents,price_slow_cents,price_ultra_cents "
+                           "FROM stations ORDER BY id",
                            -1, &st, nullptr) != SQLITE_OK)
         return out;
     while (sqlite3_step(st) == SQLITE_ROW) {
@@ -314,6 +318,8 @@ QVector<ncs::Station> Store::listStations() const {
         s.isPromo = sqlite3_column_int(st, 11) != 0;
         s.openHours = columnText(st, 12);
         s.minChargeCents = sqlite3_column_int64(st, 13);
+        s.priceSlowCents = sqlite3_column_int64(st, 14);
+        s.priceUltraCents = sqlite3_column_int64(st, 15);
         out.push_back(s);
     }
     sqlite3_finalize(st);
@@ -354,7 +360,8 @@ bool Store::getStationById(int id, ncs::Station* out) const {
     if (sqlite3_prepare_v2(db_,
                            "SELECT id,name,address,latitude,longitude,total_piles,"
                            "price_cents,free_piles,amenities,parking,location,is_promo,"
-                           "open_hours,min_charge_cents FROM stations WHERE id=?",
+                           "open_hours,min_charge_cents,price_slow_cents,price_ultra_cents "
+                           "FROM stations WHERE id=?",
                            -1, &st, nullptr) != SQLITE_OK)
         return false;
     sqlite3_bind_int(st, 1, id);
@@ -374,6 +381,8 @@ bool Store::getStationById(int id, ncs::Station* out) const {
         out->isPromo = sqlite3_column_int(st, 11) != 0;
         out->openHours = columnText(st, 12);
         out->minChargeCents = sqlite3_column_int64(st, 13);
+        out->priceSlowCents = sqlite3_column_int64(st, 14);
+        out->priceUltraCents = sqlite3_column_int64(st, 15);
     }
     sqlite3_finalize(st);
     return found;
@@ -888,8 +897,8 @@ int Store::createStation(const QString& name, const QString& address, double lat
         return -1;
     const char* sql =
         "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,"
-        "free_piles,amenities,parking,location,is_promo,open_hours,min_charge_cents) "
-        "VALUES (?,?,?,?,0,?,0,?,?,?,?,?,?)";
+        "free_piles,price_slow_cents,price_ultra_cents,amenities,parking,location,is_promo,"
+        "open_hours,min_charge_cents) VALUES (?,?,?,?,0,?,0,?,?,?,?,?,?,?,?)";
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
         return -1;
@@ -900,12 +909,14 @@ int Store::createStation(const QString& name, const QString& address, double lat
     sqlite3_bind_double(st, 3, lat);
     sqlite3_bind_double(st, 4, lng);
     sqlite3_bind_int64(st, 5, static_cast<sqlite3_int64>(priceCents));
-    sqlite3_bind_int(st, 6, f.amenities);
-    sqlite3_bind_int(st, 7, f.parking);
-    sqlite3_bind_int(st, 8, f.location);
-    sqlite3_bind_int(st, 9, f.isPromo ? 1 : 0);
-    sqlite3_bind_text(st, 10, oh.constData(), oh.size(), SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 11, static_cast<sqlite3_int64>(f.minChargeCents));
+    sqlite3_bind_int64(st, 6, static_cast<sqlite3_int64>(f.priceSlowCents));
+    sqlite3_bind_int64(st, 7, static_cast<sqlite3_int64>(f.priceUltraCents));
+    sqlite3_bind_int(st, 8, f.amenities);
+    sqlite3_bind_int(st, 9, f.parking);
+    sqlite3_bind_int(st, 10, f.location);
+    sqlite3_bind_int(st, 11, f.isPromo ? 1 : 0);
+    sqlite3_bind_text(st, 12, oh.constData(), oh.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 13, static_cast<sqlite3_int64>(f.minChargeCents));
     const int rc = sqlite3_step(st);
     sqlite3_finalize(st);
     return rc == SQLITE_DONE ? static_cast<int>(sqlite3_last_insert_rowid(db_))
@@ -919,8 +930,9 @@ bool Store::updateStation(int id, const QString& name, const QString& address,
     if (!db_)
         return false;
     const char* sql = "UPDATE stations SET name=?,address=?,latitude=?,longitude=?,"
-                      "price_cents=?,amenities=?,parking=?,location=?,is_promo=?,"
-                      "open_hours=?,min_charge_cents=? WHERE id=?";
+                      "price_cents=?,price_slow_cents=?,price_ultra_cents=?,amenities=?,"
+                      "parking=?,location=?,is_promo=?,open_hours=?,min_charge_cents=? "
+                      "WHERE id=?";
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
         return false;
@@ -931,13 +943,15 @@ bool Store::updateStation(int id, const QString& name, const QString& address,
     sqlite3_bind_double(st, 3, lat);
     sqlite3_bind_double(st, 4, lng);
     sqlite3_bind_int64(st, 5, static_cast<sqlite3_int64>(priceCents));
-    sqlite3_bind_int(st, 6, f.amenities);
-    sqlite3_bind_int(st, 7, f.parking);
-    sqlite3_bind_int(st, 8, f.location);
-    sqlite3_bind_int(st, 9, f.isPromo ? 1 : 0);
-    sqlite3_bind_text(st, 10, oh.constData(), oh.size(), SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 11, static_cast<sqlite3_int64>(f.minChargeCents));
-    sqlite3_bind_int(st, 12, id);
+    sqlite3_bind_int64(st, 6, static_cast<sqlite3_int64>(f.priceSlowCents));
+    sqlite3_bind_int64(st, 7, static_cast<sqlite3_int64>(f.priceUltraCents));
+    sqlite3_bind_int(st, 8, f.amenities);
+    sqlite3_bind_int(st, 9, f.parking);
+    sqlite3_bind_int(st, 10, f.location);
+    sqlite3_bind_int(st, 11, f.isPromo ? 1 : 0);
+    sqlite3_bind_text(st, 12, oh.constData(), oh.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 13, static_cast<sqlite3_int64>(f.minChargeCents));
+    sqlite3_bind_int(st, 14, id);
     const int rc = sqlite3_step(st);
     const bool changed = rc == SQLITE_DONE && sqlite3_changes(db_) > 0;
     sqlite3_finalize(st);

@@ -65,7 +65,11 @@ struct Station {
     double longitude = 0.0;
     int totalPiles = 0;
     int freePiles = 0;              // 由预约/结算维护
-    MoneyCents pricePerKwhCents = 0;  // 充电单价 分/度(元/度 * 100)
+    MoneyCents pricePerKwhCents = 0;  // 充电单价 分/度(元/度 * 100) = 快充档(兼容别名 price_cents)
+
+    // R2 分档单价：pricePerKwhCents 即快充档；慢/超档 0=未配置(计价回退快充档)
+    MoneyCents priceSlowCents = 0;
+    MoneyCents priceUltraCents = 0;
 
     // R1 运营属性
     int amenities = 0;        // 9 位 bitmask: 卫生间/休息室/餐饮/雨棚/便利店/自动售货机/饮用水/可洗车/有人值守
@@ -79,6 +83,12 @@ struct Station {
 // R1：配套设施 bitmask <-> 名称列表(固定 9 项顺序)
 QStringList stationAmenityNames(int mask);
 int stationAmenityMask(const QStringList& names);
+
+// R2：功率档位(慢 <30kW / 快 30–180 / 超 ≥180)与站内分档单价
+enum class PowerTier : int { Slow = 0, Fast = 1, Ultra = 2 };
+PowerTier power_tier(double powerKw);
+// 取站内某桩功率对应档单价(分/度)；未配置档(<=0)回退快充档 pricePerKwhCents
+MoneyCents stationTierPriceCents(const Station& s, double powerKw);
 
 // 充电订单状态
 enum class OrderStatus : int {

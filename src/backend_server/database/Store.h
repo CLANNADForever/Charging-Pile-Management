@@ -64,6 +64,9 @@ struct StationFields {
     bool isPromo = false;
     QString openHours;
     ncs::MoneyCents minChargeCents = 0;
+    // R2 分档单价(0=未配置，计价回退快充档 price_cents)
+    ncs::MoneyCents priceSlowCents = 0;
+    ncs::MoneyCents priceUltraCents = 0;
 };
 
 // SQLite 持久层：SQLite C API + 互斥锁串行化。单方法原子；

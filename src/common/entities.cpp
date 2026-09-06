@@ -28,4 +28,31 @@ int stationAmenityMask(const QStringList& names) {
                 mask |= (1 << i);
     return mask;
 }
+
+PowerTier power_tier(double powerKw) {
+    if (powerKw >= 180.0)
+        return PowerTier::Ultra;
+    if (powerKw >= 30.0)
+        return PowerTier::Fast;
+    return PowerTier::Slow;
+}
+
+MoneyCents stationTierPriceCents(const Station& s, double powerKw) {
+    MoneyCents p = 0;
+    switch (power_tier(powerKw)) {
+        case PowerTier::Slow:
+            p = s.priceSlowCents;
+            break;
+        case PowerTier::Ultra:
+            p = s.priceUltraCents;
+            break;
+        case PowerTier::Fast:
+        default:
+            p = s.pricePerKwhCents;
+            break;
+    }
+    if (p <= 0)
+        p = s.pricePerKwhCents;  // 未配置档回退快充档
+    return p;
+}
 }  // namespace ncs

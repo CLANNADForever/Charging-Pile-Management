@@ -87,7 +87,8 @@ bool ChargeService::reserve(const QString& phone, int deviceId, ncs::Order* out,
     o.phone = phone;
     o.stationId = d.stationId;
     o.deviceId = deviceId;
-    o.unitPriceCents = s.pricePerKwhCents;
+    // R2：按该桩功率对应档的站内单价快照(未配置档回退快充档)
+    o.unitPriceCents = ncs::stationTierPriceCents(s, d.powerKw);
     o.status = ncs::OrderStatus::Reserved;
     o.startedAt = QDateTime::currentDateTimeUtc();
     int orderId = 0;

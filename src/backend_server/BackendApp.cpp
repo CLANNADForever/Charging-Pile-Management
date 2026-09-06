@@ -78,6 +78,9 @@ json stationToJson(const ncs::Station& s) {
                 {"longitude", s.longitude},
                 {"total_piles", s.totalPiles},
                 {"price_cents", s.pricePerKwhCents},
+                {"price_slow_cents", s.priceSlowCents},
+                {"price_fast_cents", s.pricePerKwhCents},
+                {"price_ultra_cents", s.priceUltraCents},
                 {"free_piles", s.freePiles},
                 // R1 运营属性
                 {"amenities_mask", s.amenities},
@@ -714,6 +717,8 @@ void BackendApp::registerRoutes() {
                               f.openHours = QString::fromStdString(
                                   j.at("open_hours").get<std::string>());
                           f.minChargeCents = j.value("min_charge_cents", 0LL);
+                          f.priceSlowCents = j.value("price_slow_cents", 0LL);
+                          f.priceUltraCents = j.value("price_ultra_cents", 0LL);
                       } catch (...) {
                       }
                   }
@@ -779,6 +784,8 @@ void BackendApp::registerRoutes() {
                                f.openHours = QString::fromStdString(
                                    j.at("open_hours").get<std::string>());
                            f.minChargeCents = j.value("min_charge_cents", 0LL);
+                           f.priceSlowCents = j.value("price_slow_cents", 0LL);
+                           f.priceUltraCents = j.value("price_ultra_cents", 0LL);
                        } catch (...) {
                        }
                    }                   const bool ok = store_.updateStation(
