@@ -714,6 +714,8 @@ int main() {
         check(st.open(chgDb), "chg store.open");
         ncs::User u;
         st.ensureUserByPhone(QStringLiteral("13800138000"), &u);
+        st.addBalanceByPhone(QStringLiteral("13800138000"), 500);  // 足够支付账单
+        st.findUserByPhone(QStringLiteral("13800138000"), &u);
         ncs::Device dev;
         check(st.getDeviceById(1, &dev) && dev.state == ncs::DeviceState::Idle,
               "chg: device1 idle");
@@ -742,7 +744,8 @@ int main() {
               "chg: bill amount 400 (2.0kWh x 200)");
         ncs::User after;
         st.findUserByPhone(QStringLiteral("13800138000"), &after);
-        check(after.balanceCents == 0, "chg: finish does NOT deduct (balance 0)");
+        check(after.balanceCents == 500,
+              "chg: finish does NOT deduct (balance stays 500)");
         st.getDeviceById(1, &dev);
         st.getStationById(1, &s1);
         check(dev.state == ncs::DeviceState::Idle && s1.freePiles == 2,
@@ -760,13 +763,53 @@ int main() {
         ncs::Order paid;
         st.getOrderById(o.id, &paid);
         st.findUserByPhone(QStringLiteral("13800138000"), &after);
-        check(paid.status == ncs::OrderStatus::Paid && after.balanceCents == -400,
-              "chg: after pay -> Paid, balance -400");
+        check(paid.status == ncs::OrderStatus::Paid &&
+                  after.balanceCents == 100,
+              "chg: after pay -> Paid, balance 100 (500-400)");
         check(st.countUnpaidByPhone(QStringLiteral("13800138000")) == 0,
               "chg: unpaid cleared");
         check(cs.reserve(QStringLiteral("13800138000"), 2, &o3, &err3),
               "chg: reserve allowed after pay");
     }
+    // 5b) 余额非负：支付不足拒绝；历史负余额拒绝预约
+    const QString lowDb = tempDb("low");
+    {
+        ncs::backend::Store st;
+        check(st.open(lowDb), "low store.open");
+        ncs::User a;
+        st.ensureUserByPhone(QStringLiteral("13800138000"), &a);  // balance 0
+        ncs::backend::ChargeService cs(&st, [](int, bool) {}, [](int) { return 2.0; });
+        ncs::Order o;
+        QString err;
+        check(cs.reserve(QStringLiteral("13800138000"), 1, &o, &err), "low: reserve dev1");
+        cs.start(o.id, &err);
+        cs.finish(o.id, &err);  // amount 400, balance 0
+        check(!cs.pay(o.id, &err) && err.contains(QStringLiteral("余额")),
+              "low: pay insufficient REJECTED");
+        ncs::Order unpaid;
+        st.getOrderById(o.id, &unpaid);
+        ncs::User after;
+        st.findUserByPhone(QStringLiteral("13800138000"), &after);
+        check(unpaid.status == ncs::OrderStatus::Completed &&
+                  after.balanceCents == 0,
+              "low: rejected pay keeps Completed & balance 0");
+        // 充值后能付
+        st.addBalanceByPhone(QStringLiteral("13800138000"), 500);
+        check(cs.pay(o.id, &err), "low: pay ok after recharge");
+        st.getOrderById(o.id, &unpaid);
+        st.findUserByPhone(QStringLiteral("13800138000"), &after);
+        check(unpaid.status == ncs::OrderStatus::Paid && after.balanceCents == 100,
+              "low: paid, balance 100");
+        // 历史负余额 → 拒绝预约(兜底)
+        st.addBalanceByPhone(QStringLiteral("13800138000"), -200);  // balance -100
+        ncs::Order o2;
+        QString err2;
+        check(!cs.reserve(QStringLiteral("13800138000"), 2, &o2, &err2) &&
+                  err2.contains(QStringLiteral("余额")),
+              "low: negative-balance reserve REJECTED");
+    }
+    ::unlink(lowDb.toLocal8Bit().constData());
+
     // 6) 预约取消 + 超时清扫
     const QString cnlDb = tempDb("cnl");
     {

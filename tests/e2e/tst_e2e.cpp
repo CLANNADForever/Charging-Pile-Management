@@ -156,6 +156,13 @@ void TstE2e::stationsThroughService() {
 void TstE2e::chargeFullCircle() {
     const QString phone = QStringLiteral("13900009999");
     loginWait(port_, phone);
+    ncs::client::HttpUserService usvc(baseUrl(port_));
+    bool rchDone = false;
+    ncs::client::LoginResult rch;
+    usvc.recharge(phone, ncs::MoneyCents(600),
+                  [&](const ncs::client::LoginResult& x) { rch = x; rchDone = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(rchDone, 3000);
+    QVERIFY2(rch.ok, qPrintable(rch.message));
 
     ncs::client::HttpChargeService svc(baseUrl(port_));
     const int fd = simConnect(simPort_);
@@ -181,6 +188,8 @@ void TstE2e::chargeFullCircle() {
     svc.start(r1.order.id, [&](const ncs::client::OrderResult& x) { r3 = x; d3 = true; });
     QTRY_VERIFY_WITH_TIMEOUT(d3, 3000);
     QVERIFY2(r3.ok, qPrintable(r3.message));
+    QCOMPARE(r3.order.id, r1.order.id);  // ② start 返回订单(此前 data:null → id=0)
+    QCOMPARE(r3.order.status, ncs::OrderStatus::Charging);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     QVERIFY(simSend(fd, "{\"type\":\"heartbeat\",\"device_id\":1,\"energy_kwh\":2.5,"
