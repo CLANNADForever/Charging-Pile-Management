@@ -51,6 +51,9 @@ void reply(httplib::Response& res, int code, const char* msg, json data) {
         res.status = 200;
     json j{{"code", code}, {"message", msg}, {"data", std::move(data)}};
     res.set_content(j.dump(), "application/json; charset=utf-8");
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type,Authorization");
 }
 void replyOk(httplib::Response& res, json data) {
     reply(res, kCodeOk, "ok", std::move(data));
@@ -237,6 +240,9 @@ bool BackendApp::init() {
 }
 
 void BackendApp::registerRoutes() {
+    srv_.Options(R"(/.*)", [](const httplib::Request&, httplib::Response& res) {
+        replyOk(res, nullptr);
+    });
     srv_.Get("/health", [](const httplib::Request&, httplib::Response& res) {
         replyOk(res, json{{"service", kService}, {"version", kVersion}});
     });
