@@ -80,6 +80,24 @@ QJsonObject replyUserData(const QJsonValue &d)
 }
 }  // namespace
 
+bool UserService::refreshProfile(QString *err)
+{
+    if (m_current.phone.isEmpty()) {
+        if (err) *err = QStringLiteral("尚未登录");
+        return false;
+    }
+    const QByteArray ph = QUrl::toPercentEncoding(m_current.phone);
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(
+        QStringLiteral("/api/user/profile?phone=%1").arg(QString::fromUtf8(ph)));
+    if (!r.ok) {
+        if (err) *err = r.message.isEmpty() ? QStringLiteral("刷新失败") : r.message;
+        return false;
+    }
+    m_current = userFromJson(replyUserData(r.data));
+    if (err) err->clear();
+    return true;
+}
+
 bool UserService::isValidPhone(const QString &phone)
 {
     if (phone.length() != 11)

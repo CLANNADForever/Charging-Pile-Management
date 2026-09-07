@@ -165,6 +165,8 @@ UserCenterPage::UserCenterPage(QWidget *parent)
 
 void UserCenterPage::refresh()
 {
+    QString err;
+    UserService::instance().refreshProfile(&err);  // 每次进入“我的”拉最新余额
     const User &u = UserService::instance().current();
     m_nicknameBtn->setText(u.nickname);
     m_phoneLabel->setText(Utils::maskPhone(u.phone));

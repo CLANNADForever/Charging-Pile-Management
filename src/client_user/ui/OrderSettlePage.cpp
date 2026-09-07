@@ -60,10 +60,6 @@ OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
     addRow(QStringLiteral("单价"), Utils::formatMoney(m_order.unitPrice) + QStringLiteral(" 元/度"));
     addRow(QStringLiteral("总金额"), QStringLiteral("¥ ") + Utils::formatMoney(m_order.amount));
     {
-        m_balanceAfterLabel = new QLabel(QStringLiteral("¥ ") + Utils::formatMoney(m_order.balanceAfter));
-        m_balanceAfterLabel->setObjectName(QStringLiteral("valueLabel"));
-        m_balanceAfterLabel->setWordWrap(true);
-        form->addRow(QStringLiteral("扣款后余额"), m_balanceAfterLabel);
     }
 
     body->addWidget(card);
@@ -105,9 +101,6 @@ void OrderSettlePage::onPay()
         return;
     }
     m_order = ChargeService::instance().orderDetail(m_orderNo);
-    if (m_balanceAfterLabel)
-        m_balanceAfterLabel->setText(QStringLiteral("¥ ") +
-                                     Utils::formatMoney(m_order.balanceAfter));
     m_payTip->setText(QStringLiteral("支付成功"));
     m_payTip->setStyleSheet(QStringLiteral("color:#00B368;"));
     m_payBtn->setVisible(false);

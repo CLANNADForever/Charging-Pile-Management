@@ -28,6 +28,9 @@ public:
     // 验证码登录/自动注册；成功写入 current 返回空串，失败返回面向用户的错误。
     QString login(const QString &phone, const QString &code);
 
+    // 从后端刷新当前用户(余额等)，成功返回 true。
+    bool refreshProfile(QString *err = nullptr);
+
     // 校验手机号格式(11 位、以 1 开头)。
     static bool isValidPhone(const QString &phone);
 

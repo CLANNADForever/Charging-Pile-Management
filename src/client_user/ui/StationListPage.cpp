@@ -191,6 +191,10 @@ void StationListPage::buildListContent()
     }
     m_filterBtn->setMenu(menu);
 
+    for (auto *w : { static_cast<QWidget *>(m_sortCombo),
+                     static_cast<QWidget *>(m_distanceCombo),
+                     static_cast<QWidget *>(m_filterBtn) })
+        w->setFixedHeight(36);  // 与筛选按钮风格一致
     filterRow->addWidget(m_sortCombo, 2);
     filterRow->addWidget(m_distanceCombo, 2);
     filterRow->addWidget(m_filterBtn, 1);
