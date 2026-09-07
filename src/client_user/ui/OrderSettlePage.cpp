@@ -89,6 +89,9 @@ OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
     doneBtn->setObjectName(QStringLiteral("primaryButton"));
     connect(doneBtn, &QPushButton::clicked, this, &OrderSettlePage::doneRequested);
     body->addWidget(doneBtn);
+    m_doneBtn = doneBtn;
+    if (m_pending)
+        m_doneBtn->setVisible(false);  // 待支付时只留“立即支付”，支付后才显示“完成”
 
     root->addLayout(body, 1);
 }
@@ -107,5 +110,6 @@ void OrderSettlePage::onPay()
                                      Utils::formatMoney(m_order.balanceAfter));
     m_payTip->setText(QStringLiteral("支付成功"));
     m_payTip->setStyleSheet(QStringLiteral("color:#00B368;"));
-    m_payBtn->setEnabled(false);
+    m_payBtn->setVisible(false);
+    m_doneBtn->setVisible(true);
 }

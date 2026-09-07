@@ -24,6 +24,7 @@ private:
     void onStart();
     void onCancel();
     void onSettle();
+    void onPay();
 
     QString m_orderNo;
     Order m_order;

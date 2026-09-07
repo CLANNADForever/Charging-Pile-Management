@@ -25,4 +25,5 @@ private:
     QLabel *m_balanceAfterLabel = nullptr;
     QLabel *m_payTip = nullptr;
     QPushButton *m_payBtn = nullptr;
+    QPushButton *m_doneBtn = nullptr;
 };

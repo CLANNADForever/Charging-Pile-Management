@@ -12,6 +12,7 @@
 #include "common/Toast.h"
 #include "common/Utils.h"
 #include "core/service/ChargeService.h"
+#include "theme/Theme.h"
 
 OrderDetailPage::OrderDetailPage(const QString &orderNo, QWidget *parent)
     : Page(parent)
@@ -69,10 +70,15 @@ OrderDetailPage::OrderDetailPage(const QString &orderNo, QWidget *parent)
 void OrderDetailPage::refreshOrder()
 {
     m_order = ChargeService::instance().orderDetail(m_orderNo);
-    m_statusLabel->setText(Utils::orderStatusText(m_order.status));
+    const bool pending = (m_order.status == 2 && !m_order.paid);
+    QString text = pending ? QStringLiteral("待支付")
+                           : Utils::orderStatusText(m_order.status);
+    const QColor color = pending ? Theme::Warning
+                                 : Utils::orderStatusColor(m_order.status);
+    m_statusLabel->setText(text);
     m_statusLabel->setStyleSheet(
         QStringLiteral("color:%1; font-size:22px; font-weight:bold;")
-            .arg(Utils::orderStatusColor(m_order.status).name()));
+            .arg(color.name()));
     rebuildActions();
 }
 
@@ -105,10 +111,10 @@ void OrderDetailPage::rebuildActions()
             addAction(QStringLiteral("结束充电(生成账单)"), [this] { onSettle(); });
             break;
         case 2:  // 已完成(待支付或已支付)
-            if (ChargeService::instance().isPendingPay(m_orderNo))
+            if (!m_order.paid)
                 addAction(QStringLiteral("立即支付 ¥ %1")
                               .arg(Utils::formatMoney(m_order.amount)),
-                          [this] { emit settleRequested(m_orderNo); });
+                          [this] { onPay(); });  // 原地支付，不跳转
             break;
         default:
             break;  // 已取消等无可操作
@@ -146,4 +152,15 @@ void OrderDetailPage::onSettle()
         return;
     }
     emit settleRequested(m_orderNo);  // 去结算页支付
+}
+
+void OrderDetailPage::onPay()
+{
+    const QString err = ChargeService::instance().pay(m_orderNo);
+    if (!err.isEmpty()) {
+        Toast::show(this, err);
+        return;
+    }
+    Toast::show(this, QStringLiteral("支付成功"));
+    refreshOrder();
 }

@@ -10,6 +10,7 @@
 
 #include "common/Utils.h"
 #include "core/service/ChargeService.h"
+#include "theme/Theme.h"
 
 OrderListPage::OrderListPage(QWidget *parent)
     : Page(parent)
@@ -101,9 +102,12 @@ QWidget *OrderListPage::buildCard(const Order &o)
     auto *top = new QHBoxLayout;
     auto *no = new QLabel(o.orderNo, card);
     no->setObjectName(QStringLiteral("hintLabel"));
-    auto *status = new QLabel(Utils::orderStatusText(o.status), card);
+    const bool pending = (o.status == 2 && !o.paid);
+    auto *status = new QLabel(pending ? QStringLiteral("待支付")
+                                      : Utils::orderStatusText(o.status), card);
+    const QColor sc = pending ? Theme::Warning : Utils::orderStatusColor(o.status);
     status->setStyleSheet(QStringLiteral("color:%1; font-size:13px; font-weight:bold;")
-                              .arg(Utils::orderStatusColor(o.status).name()));
+                              .arg(sc.name()));
     top->addWidget(no);
     top->addStretch();
     top->addWidget(status);

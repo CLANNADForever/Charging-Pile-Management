@@ -53,6 +53,7 @@ Order fromOrderJson(const QJsonObject &o)
     x.amount = o.value(QStringLiteral("amount_cents")).toDouble() / 100.0;
     x.energy = o.value(QStringLiteral("energy_kwh")).toDouble();
     x.status = toFront(o.value(QStringLiteral("status")).toInt());
+    x.paid = o.value(QStringLiteral("status")).toInt() == 3;  // Paid
     x.startTime = isoToLocal(o.value(QStringLiteral("started_at")).toString());
     x.endTime = isoToLocal(o.value(QStringLiteral("finished_at")).toString());
     x.chargerNo = QStringLiteral("GG-%1").arg(x.chargerId, 2, 10, QLatin1Char('0'));

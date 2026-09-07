@@ -21,6 +21,7 @@ struct Order
     double  amount = 0.0;       // 总金额(元)
     double  balanceAfter = 0.0; // 扣款后余额(元)
     int     status = 0;
+    bool    paid = false;  // 前端区分“已完成(已支付) vs 待支付”
 };
 
 // 订单/充电服务(后端权威)。结算=finish(只出待支付账单)；支付=pay 单独(余额不足拒付)。
