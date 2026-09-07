@@ -4,7 +4,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Charts)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Charts Network)
 
 # ============ 新 C 端可执行程序 ncs_user_new ============
 add_executable(ncs_user_new
@@ -68,7 +68,8 @@ target_include_directories(ncs_user_new PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/client_user
 )
 
-target_link_libraries(ncs_user_new PRIVATE Qt6::Widgets)
+target_sources(ncs_user_new PRIVATE core/net/BackendClient.cpp)
+target_link_libraries(ncs_user_new PRIVATE Qt6::Widgets Qt6::Network)
 
 # ============ 新 B 端可执行程序 ncs_admin_new ============
 add_executable(ncs_admin_new
@@ -121,4 +122,5 @@ target_include_directories(ncs_admin_new PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/client_admin
 )
 
-target_link_libraries(ncs_admin_new PRIVATE Qt6::Widgets Qt6::Charts)
+target_sources(ncs_admin_new PRIVATE core/net/BackendClient.cpp)
+target_link_libraries(ncs_admin_new PRIVATE Qt6::Widgets Qt6::Charts Qt6::Network)

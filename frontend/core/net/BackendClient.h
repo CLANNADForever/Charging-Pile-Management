@@ -1,0 +1,34 @@
+#pragma once
+
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QString>
+
+// 小型同步 HTTP 客户端(新前端 core 用)。UI 按同步拿结果 → 这里阻塞到响应/超时。
+// 信封 {code,message,data}:code=0 成功。base url 可用环境变量 NCS_BACKEND_URL 覆盖。
+namespace ncsfe {
+
+class BackendClient
+{
+public:
+    struct Reply {
+        bool ok = false;      // 传输层/解析成功
+        int code = -1;        // 信封 code(-1=未解析)
+        QString message;
+        QJsonValue data;
+    };
+
+    static QString baseUrl();
+    static void setToken(const QString &t) { s_token = t; }
+    static QString token() { return s_token; }
+
+    static Reply get(const QString &path);
+    static Reply post(const QString &path, const QJsonObject &body);
+
+private:
+    static Reply request(const QByteArray &verb, const QString &path,
+                         const QJsonObject *body);
+    static QString s_token;
+};
+
+}  // namespace ncsfe

@@ -2,9 +2,76 @@
 
 #include <cmath>
 
+#include <QJsonArray>
+#include <QJsonObject>
+
+#include "core/net/BackendClient.h"
+
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+
+bool feHasAdmin() { return !ncsfe::BackendClient::token().isEmpty(); }
+QString feTier(double kw)
+{
+    if (kw >= 180.0)
+        return QStringLiteral("超充");
+    if (kw >= 30.0)
+        return QStringLiteral("快充");
+    return QStringLiteral("慢充");
 }
+int feChargerStatus(int st)
+{
+    switch (st) {  // 0 空闲 1 使用 2 故障；后端 3 预约/4 重启按占用(1)
+        case 0: return 0;
+        case 1: return 1;
+        case 2: return 2;
+        default: return 1;
+    }
+}
+Charger feCharger(const QJsonObject &o)
+{
+    Charger c;
+    c.id = o.value(QStringLiteral("id")).toInt();
+    c.stationId = o.value(QStringLiteral("station_id")).toInt();
+    c.code = QStringLiteral("GG-%1").arg(c.id, 2, 10, QLatin1Char('0'));
+    c.power = o.value(QStringLiteral("power_kw")).toDouble();
+    c.type = feTier(c.power);
+    c.status = feChargerStatus(o.value(QStringLiteral("state")).toInt());
+    c.totalCount = o.contains(QStringLiteral("sessions"))
+                       ? o.value(QStringLiteral("sessions")).toInt()
+                       : 0;
+    c.totalMinutes = o.contains(QStringLiteral("charging_sec"))
+                         ? qRound(o.value(QStringLiteral("charging_sec")).toDouble() / 60.0)
+                         : 0;
+    return c;
+}
+Station feStation(const QJsonObject &o)
+{
+    Station s;
+    s.id = o.value(QStringLiteral("id")).toInt();
+    s.name = o.value(QStringLiteral("name")).toString();
+    s.address = o.value(QStringLiteral("address")).toString();
+    s.latitude = o.value(QStringLiteral("latitude")).toDouble();
+    s.longitude = o.value(QStringLiteral("longitude")).toDouble();
+    s.unitPrice = o.value(QStringLiteral("price_cents")).toDouble() / 100.0;
+    s.openHours = o.value(QStringLiteral("open_hours")).toString();
+    if (o.contains(QStringLiteral("amenities")) &&
+        o.value(QStringLiteral("amenities")).isArray())
+        for (const QJsonValue &v : o.value(QStringLiteral("amenities")).toArray())
+            s.facilities << v.toString();
+    s.hasCoupon = o.value(QStringLiteral("is_promo")).toBool();
+    s.parkingFree = o.value(QStringLiteral("parking")).toInt() == 1;
+    return s;
+}
+QJsonArray feItems(const ncsfe::BackendClient::Reply &r)
+{
+    if (r.data.isArray())
+        return r.data.toArray();
+    if (r.data.isObject())
+        return r.data.toObject().value(QStringLiteral("items")).toArray();
+    return QJsonArray();
+}
+}  // namespace
 
 StationService &StationService::instance()
 {
@@ -89,12 +156,22 @@ StationService::StationService()
 
 QList<Station> StationService::listStations() const
 {
-    return m_stations;
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(
+        feHasAdmin() ? QStringLiteral("/api/admin/stations")
+                     : QStringLiteral("/api/stations"));
+    QList<Station> out;
+    if (r.ok) {
+        for (const QJsonValue &v : feItems(r))
+            out.append(feStation(v.toObject()));
+        return out;
+    }
+    return m_stations;  // 离线回退本地
 }
 
 Station StationService::stationDetail(int id) const
 {
-    for (const Station &s : m_stations) {
+    const QList<Station> list = listStations();
+    for (const Station &s : list) {
         if (s.id == id)
             return s;
     }
@@ -103,16 +180,32 @@ Station StationService::stationDetail(int id) const
 
 QList<Charger> StationService::chargersByStation(int stationId) const
 {
-    QList<Charger> result;
-    for (const Charger &c : m_chargers) {
-        if (c.stationId == stationId)
-            result.append(c);
+    const QString path =
+        feHasAdmin() ? QStringLiteral("/api/admin/devices?station_id=%1").arg(stationId)
+                     : QStringLiteral("/api/stations/%1/devices").arg(stationId);
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(path);
+    if (r.ok) {
+        QList<Charger> result;
+        for (const QJsonValue &v : feItems(r))
+            result.append(feCharger(v.toObject()));
+        return result;
     }
-    return result;
+    QList<Charger> fallback;
+    for (const Charger &c : m_chargers)
+        if (c.stationId == stationId)
+            fallback.append(c);
+    return fallback;
 }
 
 Charger StationService::chargerById(int id) const
 {
+    if (feHasAdmin()) {
+        const QList<Charger> all = allChargers();
+        for (const Charger &c : all)
+            if (c.id == id)
+                return c;
+        return Charger();
+    }
     for (const Charger &c : m_chargers) {
         if (c.id == id)
             return c;
@@ -161,6 +254,16 @@ double StationService::haversineKm(double lat1, double lon1, double lat2, double
 
 QList<Charger> StationService::allChargers() const
 {
+    if (feHasAdmin()) {
+        const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(
+            QStringLiteral("/api/admin/devices?station_id=-1"));
+        if (r.ok) {
+            QList<Charger> out;
+            for (const QJsonValue &v : feItems(r))
+                out.append(feCharger(v.toObject()));
+            return out;
+        }
+    }
     return m_chargers;
 }
 

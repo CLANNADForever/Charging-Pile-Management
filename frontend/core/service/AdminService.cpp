@@ -1,5 +1,9 @@
 #include "AdminService.h"
 
+#include <QJsonObject>
+
+#include "core/net/BackendClient.h"
+
 AdminService &AdminService::instance()
 {
     static AdminService s;
@@ -8,12 +12,18 @@ AdminService &AdminService::instance()
 
 bool AdminService::login(const QString &account, const QString &password)
 {
-    // 桩:固定初始账号 admin / 123456(UC-A-01)。
-    // 后续阶段二替换为 SHA-256 加盐哈希校验(NFR-S-01)。
-    if (account == QStringLiteral("admin") && password == QStringLiteral("123456")) {
-        m_account = account;
-        return true;
+    // 在线：调后端 /api/admin/login(账号密码与角色由后端权威判定)，成功记录 token 与账号。
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
+        QStringLiteral("/api/admin/login"),
+        QJsonObject{{QStringLiteral("username"), account},
+                    {QStringLiteral("password"), password}});
+    if (!r.ok) {
+        ncsfe::BackendClient::setToken(QString());
+        m_account.clear();
+        return false;
     }
-    m_account.clear();
-    return false;
+    ncsfe::BackendClient::setToken(
+        r.data.toObject().value(QStringLiteral("token")).toString());
+    m_account = account;
+    return true;
 }

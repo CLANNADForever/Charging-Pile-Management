@@ -1,9 +1,10 @@
 #include "StatsService.h"
 
-#include "StationService.h"
-
 #include <QDate>
-#include <cmath>
+#include <QJsonArray>
+#include <QJsonObject>
+
+#include "core/net/BackendClient.h"
 
 StatsService &StatsService::instance()
 {
@@ -13,58 +14,58 @@ StatsService &StatsService::instance()
 
 QList<DailyStat> StatsService::dailyStats(int days) const
 {
-    // 桩:确定性模拟(基于日序号),叠加周末效应 + 周期波动,保证每次运行一致。
-    QList<DailyStat> result;
-    const QDate today = QDate::currentDate();
-    for (int i = days - 1; i >= 0; --i) {
-        const QDate d = today.addDays(-i);
-        const int seed = d.dayOfYear();
-
-        const bool weekend = d.dayOfWeek() >= 6; // 周六/周日
-        const double wave = 1.0 + 0.30 * std::sin(seed * 0.55);
-        const double noise = 0.85 + 0.30 * double((seed * 131) % 97) / 97.0;
-
+    QList<DailyStat> out;
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(
+        QStringLiteral("/api/admin/stats/daily?days=%1").arg(days));
+    if (!r.ok || !r.data.isArray())
+        return out;
+    for (const QJsonValue &v : r.data.toArray()) {
+        const QJsonObject o = v.toObject();
         DailyStat s;
-        s.date = d.toString(QStringLiteral("MM-dd"));
-        s.revenue = 3400.0 * wave * noise * (weekend ? 1.28 : 1.0);
-        s.orderCount = int(s.revenue / 36.0) + 4;
-        result.append(s);
+        const QString day = o.value(QStringLiteral("day")).toString();  // yyyy-MM-dd
+        if (day.length() >= 10)
+            s.date = day.mid(5);  // MM-dd
+        else
+            s.date = day;
+        s.revenue = o.value(QStringLiteral("revenue_cents")).toDouble() / 100.0;
+        s.orderCount = o.value(QStringLiteral("orders")).toInt();
+        out.append(s);
     }
-    return result;
+    return out;
 }
 
 RevenueSummary StatsService::revenueSummary() const
 {
-    const QList<DailyStat> stats = dailyStats(30);
     RevenueSummary sum;
-    sum.today = stats.isEmpty() ? 0.0 : stats.last().revenue;
-
-    double monthTotal = 0.0;
-    for (const DailyStat &s : stats)
-        monthTotal += s.revenue;
-    sum.month = monthTotal;
-    sum.total = monthTotal * 8.6; // 桩:约 8.6 个月累计
+    const ncsfe::BackendClient::Reply r =
+        ncsfe::BackendClient::get(QStringLiteral("/api/admin/stats/overview"));
+    if (!r.ok || !r.data.isObject())
+        return sum;
+    const QJsonObject d = r.data.toObject();
+    const auto agg = [&](const char *key) {
+        return d.value(QLatin1String(key)).toObject()
+            .value(QStringLiteral("revenue_cents")).toDouble() / 100.0;
+    };
+    sum.today = agg("today");
+    sum.month = agg("month");
+    sum.total = agg("total");
     return sum;
 }
 
 ChargerStatusOverview StatsService::chargerStatusOverview() const
 {
     ChargerStatusOverview ov;
-    const auto stations = StationService::instance().listStations();
-    for (const Station &st : stations) {
-        const auto chargers = StationService::instance().chargersByStation(st.id);
-        for (const Charger &c : chargers) {
-            ++ov.total;
-            if (c.status == 0)
-                ++ov.idleCount;
-            else if (c.status == 1)
-                ++ov.usingCount;
-            else if (c.status == 2)
-                ++ov.faultCount;
-        }
-    }
-    ov.health = ov.total > 0
-        ? double(ov.idleCount + ov.usingCount) / double(ov.total) * 100.0
-        : 0.0;
+    const ncsfe::BackendClient::Reply r =
+        ncsfe::BackendClient::get(QStringLiteral("/api/admin/stats/overview"));
+    if (!r.ok || !r.data.isObject())
+        return ov;
+    const QJsonObject d = r.data.toObject();
+    const QJsonObject h = d.value(QStringLiteral("device_health")).toObject();
+    ov.idleCount = h.value(QStringLiteral("idle")).toInt();
+    ov.usingCount = h.value(QStringLiteral("charging")).toInt();
+    ov.faultCount = h.value(QStringLiteral("fault")).toInt();
+    ov.total = d.value(QStringLiteral("devices_total")).toInt();
+    if (ov.total > 0)
+        ov.health = double(ov.idleCount + ov.usingCount) / double(ov.total) * 100.0;
     return ov;
 }
