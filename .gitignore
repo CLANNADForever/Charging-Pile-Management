@@ -5,3 +5,10 @@ build/
 *.log
 .vscode/
 uploads/
+
+# 导入暂存 / 构建产物(不入库)
+/other/
+node_modules/
+**/dist/
+/web/node_modules/
+/web/dist/

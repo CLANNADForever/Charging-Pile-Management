@@ -1,0 +1,270 @@
+#include "StationService.h"
+
+#include <cmath>
+
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+}
+
+StationService &StationService::instance()
+{
+    static StationService s;
+    return s;
+}
+
+StationService::StationService()
+{
+    // 桩数据:6 个电站(分布在杭州市区),每站若干电桩(快慢充混合,含故障桩)。
+    auto addStation = [this](int id, const QString &name, const QString &addr,
+                             double lat, double lon, double price,
+                             const QString &hours, const QStringList &fac,
+                             bool coupon, bool parkingFree,
+                             int fast, int slow, int ultra = 0) {
+        Station s;
+        s.id = id;
+        s.name = name;
+        s.address = addr;
+        s.latitude = lat;
+        s.longitude = lon;
+        s.unitPrice = price;
+        s.openHours = hours;
+        s.facilities = fac;
+        s.hasCoupon = coupon;
+        s.parkingFree = parkingFree;
+        m_stations.append(s);
+
+        int n = 1;
+        auto addCharger = [this, id, &n](const QString &code, const QString &type,
+                                         double power, int status) {
+            Charger c;
+            c.id = m_chargers.size() + 1;
+            c.stationId = id;
+            c.code = code;
+            c.type = type;
+            c.power = power;
+            c.status = status;
+            c.totalCount = 40 + (n * 13) % 200;
+            c.totalMinutes = 200 + (n * 37) % 4800;
+            m_chargers.append(c);
+            ++n;
+        };
+
+        const QString prefix = name.left(2).isEmpty() ? QStringLiteral("CD") : name.left(2);
+        for (int i = 0; i < ultra; ++i)
+            addCharger(prefix + QStringLiteral("-%1").arg(n, 2, 10, QLatin1Char('0')),
+                       QStringLiteral("超充"), 360.0, (i == 0 && id == 2) ? 2 : 0);
+        for (int i = 0; i < fast; ++i)
+            addCharger(prefix + QStringLiteral("-%1").arg(n, 2, 10, QLatin1Char('0')),
+                       QStringLiteral("快充"), 120.0, (id == 4 && i == 1) ? 2 : 0);
+        for (int i = 0; i < slow; ++i)
+            addCharger(prefix + QStringLiteral("-%1").arg(n, 2, 10, QLatin1Char('0')),
+                       QStringLiteral("慢充"), 7.0, 0);
+    };
+
+    addStation(1, QStringLiteral("未来科技城超级充电站"), QStringLiteral("余杭区文一西路 998 号"),
+               30.2841, 120.0442, 1.28, QStringLiteral("00:00-24:00"),
+               { QStringLiteral("卫生间"), QStringLiteral("休息室"), QStringLiteral("便利店"), QStringLiteral("雨棚") },
+               true, true, 6, 2, 2);
+    addStation(2, QStringLiteral("滨江公园慢充站"), QStringLiteral("滨江区江南大道 228 号"),
+               30.2091, 120.2102, 0.98, QStringLiteral("06:00-22:00"),
+               { QStringLiteral("卫生间"), QStringLiteral("饮用水") },
+               false, true, 2, 6);
+    addStation(3, QStringLiteral("高铁站东广场充电站"), QStringLiteral("江干区东宁路 1 号"),
+               30.2912, 120.2101, 1.50, QStringLiteral("00:00-24:00"),
+               { QStringLiteral("卫生间"), QStringLiteral("餐饮"), QStringLiteral("休息室") },
+               false, false, 8, 0, 2);
+    addStation(4, QStringLiteral("软件园一期充电站"), QStringLiteral("西湖区文三路 90 号"),
+               30.2741, 120.1201, 1.20, QStringLiteral("07:00-21:00"),
+               { QStringLiteral("卫生间"), QStringLiteral("便利店"), QStringLiteral("雨棚") },
+               true, false, 5, 2);
+    addStation(5, QStringLiteral("西湖文化广场充电站"), QStringLiteral("拱墅区文晖路 419 号"),
+               30.2801, 120.1651, 1.35, QStringLiteral("08:00-20:00"),
+               { QStringLiteral("卫生间"), QStringLiteral("休息室") },
+               false, true, 4, 3);
+    addStation(6, QStringLiteral("城北汽车城充电站"), QStringLiteral("拱墅区石祥路 589 号"),
+               30.3201, 120.1451, 1.10, QStringLiteral("00:00-24:00"),
+               { QStringLiteral("卫生间"), QStringLiteral("餐饮"), QStringLiteral("自动售货机") },
+               true, true, 6, 4, 2);
+}
+
+QList<Station> StationService::listStations() const
+{
+    return m_stations;
+}
+
+Station StationService::stationDetail(int id) const
+{
+    for (const Station &s : m_stations) {
+        if (s.id == id)
+            return s;
+    }
+    return Station();
+}
+
+QList<Charger> StationService::chargersByStation(int stationId) const
+{
+    QList<Charger> result;
+    for (const Charger &c : m_chargers) {
+        if (c.stationId == stationId)
+            result.append(c);
+    }
+    return result;
+}
+
+Charger StationService::chargerById(int id) const
+{
+    for (const Charger &c : m_chargers) {
+        if (c.id == id)
+            return c;
+    }
+    return Charger();
+}
+
+void StationService::setChargerStatus(int id, int status)
+{
+    for (Charger &c : m_chargers) {
+        if (c.id == id) {
+            c.status = status;
+            return;
+        }
+    }
+}
+
+void StationService::incrementChargerCount(int id)
+{
+    for (Charger &c : m_chargers) {
+        if (c.id == id) {
+            ++c.totalCount;
+            return;
+        }
+    }
+}
+
+StationService::Location StationService::currentLocation() const
+{
+    Location loc;
+    loc.latitude = 30.2741;
+    loc.longitude = 120.1551;
+    loc.label = QStringLiteral("杭州市西湖区");
+    return loc;
+}
+
+double StationService::haversineKm(double lat1, double lon1, double lat2, double lon2)
+{
+    const double dLat = (lat2 - lat1) * kPi / 180.0;
+    const double dLon = (lon2 - lon1) * kPi / 180.0;
+    const double a = std::sin(dLat / 2.0) * std::sin(dLat / 2.0)
+        + std::cos(lat1 * kPi / 180.0) * std::cos(lat2 * kPi / 180.0)
+        * std::sin(dLon / 2.0) * std::sin(dLon / 2.0);
+    return 2.0 * 6371.0 * std::asin(std::sqrt(a));
+}
+
+QList<Charger> StationService::allChargers() const
+{
+    return m_chargers;
+}
+
+void StationService::addCharger(int stationId, const QString &code,
+                                const QString &type, double power)
+{
+    // 用「最大 id + 1」而非 size()+1,避免删除后再新增导致 id 冲突。
+    int nextId = 0;
+    for (const Charger &c : m_chargers)
+        if (c.id > nextId)
+            nextId = c.id;
+    ++nextId;
+
+    Charger c;
+    c.id = nextId;
+    c.stationId = stationId;
+    c.code = code;
+    c.type = type;
+    c.power = power;
+    c.status = 0;
+    c.totalCount = 0;
+    c.totalMinutes = 0;
+    m_chargers.append(c);
+}
+
+bool StationService::deleteCharger(int chargerId)
+{
+    for (int i = 0; i < m_chargers.size(); ++i) {
+        if (m_chargers[i].id == chargerId) {
+            if (m_chargers[i].status == 1)
+                return false; // 使用中禁止删除
+            m_chargers.removeAt(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+int StationService::addStation(const QString &name, const QString &address,
+                               double lat, double lon, double price,
+                               int chargerCount, double defaultPower)
+{
+    Station s;
+    s.id = m_stations.isEmpty() ? 1 : m_stations.last().id + 1;
+    s.name = name;
+    s.address = address;
+    s.latitude = lat;
+    s.longitude = lon;
+    s.unitPrice = price;
+    s.openHours = QStringLiteral("00:00-24:00");
+    s.hasCoupon = false;
+    s.parkingFree = false;
+    m_stations.append(s);
+
+    // 用「最大 id + 1」连续分配,避免与现存电桩 id 冲突。
+    int nextId = 0;
+    for (const Charger &c : m_chargers)
+        if (c.id > nextId)
+            nextId = c.id;
+    ++nextId;
+
+    const QString prefix = name.left(2);
+    for (int i = 0; i < chargerCount; ++i) {
+        Charger c;
+        c.id = nextId++;
+        c.stationId = s.id;
+        c.code = prefix + QStringLiteral("-%1").arg(i + 1, 2, 10, QLatin1Char('0'));
+        c.type = defaultPower >= 30.0 ? QStringLiteral("快充") : QStringLiteral("慢充");
+        c.power = defaultPower;
+        c.status = 0;
+        c.totalCount = 0;
+        c.totalMinutes = 0;
+        m_chargers.append(c);
+    }
+    return s.id;
+}
+
+bool StationService::updateStation(int id, const QString &name, const QString &address,
+                                   double lat, double lon, double price)
+{
+    for (Station &s : m_stations) {
+        if (s.id == id) {
+            s.name = name;
+            s.address = address;
+            s.latitude = lat;
+            s.longitude = lon;
+            s.unitPrice = price;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool StationService::deleteStation(int id)
+{
+    for (const Charger &c : m_chargers) {
+        if (c.stationId == id)
+            return false; // BR-10:有电桩禁止删除
+    }
+    for (int i = 0; i < m_stations.size(); ++i) {
+        if (m_stations[i].id == id) {
+            m_stations.removeAt(i);
+            return true;
+        }
+    }
+    return false;
+}

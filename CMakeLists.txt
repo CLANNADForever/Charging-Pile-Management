@@ -8,6 +8,7 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 
 add_subdirectory(src)
+add_subdirectory(frontend)
 
 enable_testing()
 add_subdirectory(tests)
