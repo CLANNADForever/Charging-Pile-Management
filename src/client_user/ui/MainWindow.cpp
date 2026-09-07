@@ -95,7 +95,9 @@ MainWindow::MainWindow(QWidget *parent)
         connect(detail, &StationDetailPage::chargeRequested, this, [this](int id) {
             auto *charge = new ChargePage(id, this);
             connect(charge, &ChargePage::settleRequested, this, [this](const QString &orderNo) {
-                pushPage(new OrderSettlePage(orderNo, this));
+                auto *st = new OrderSettlePage(orderNo, this);
+                connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
+                pushPage(st);
             });
             pushPage(charge);
         });
@@ -122,9 +124,24 @@ MainWindow::MainWindow(QWidget *parent)
         pushPage(new MapPage(id, this));
     });
 
-    // 充电入口(底部「充电」tab)
+    // 充电入口(底部「充电」tab)：去支付 / 去订单管理 / 去首页
+    connect(m_chargeEntry, &ChargeEntryPage::openOrders, this, [this]() {
+        auto *list = new OrderListPage(this);
+        connect(list, &OrderListPage::orderClicked, this, [this](const QString &orderNo) {
+            auto *detail = new OrderDetailPage(orderNo, this);
+            connect(detail, &OrderDetailPage::settleRequested, this, [this](const QString &no) {
+                auto *st = new OrderSettlePage(no, this);
+                connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
+                pushPage(st);
+            });
+            pushPage(detail);
+        });
+        pushPage(list);
+    });
     connect(m_chargeEntry, &ChargeEntryPage::settleRequested, this, [this](const QString &orderNo) {
-        pushPage(new OrderSettlePage(orderNo, this));
+        auto *st = new OrderSettlePage(orderNo, this);
+        connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
+        pushPage(st);
     });
     connect(m_chargeEntry, &ChargeEntryPage::goHome, this, [this]() { switchTab(0); });
 
