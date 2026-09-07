@@ -193,7 +193,11 @@ void UserCenterPage::onChangeAvatar()
         return;
     }
 
-    UserService::instance().updateAvatar(file);
+    QString err;
+    if (!UserService::instance().uploadAvatar(file, &err)) {
+        Toast::show(this, err);
+        return;
+    }
     refresh();
 }
 
@@ -213,7 +217,11 @@ void UserCenterPage::onEditNickname()
     if (text.length() > 20)
         text = text.left(20);
 
-    UserService::instance().updateNickname(text);
+    QString err;
+    if (!UserService::instance().updateNickname(text, &err)) {
+        Toast::show(this, err);
+        return;
+    }
     refresh();
 }
 
@@ -231,7 +239,12 @@ void UserCenterPage::onRecharge()
 
     m_rechargeEdit->setStyleSheet(QString());
     m_rechargeEdit->clear();
-    UserService::instance().recharge(amount);
-    Toast::show(this, QStringLiteral("支付成功"));
+    QString err;
+    if (!UserService::instance().recharge(amount, &err)) {
+        Toast::show(this, err);
+        refresh();
+        return;
+    }
+    Toast::show(this, QStringLiteral("充值成功"));
     refresh();
 }

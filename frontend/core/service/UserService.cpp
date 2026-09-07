@@ -1,5 +1,10 @@
 #include "UserService.h"
 
+#include <QBuffer>
+#include <QDir>
+#include <QFile>
+#include <QImage>
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QUrl>
@@ -76,19 +81,104 @@ bool UserService::isValidPhone(const QString &phone)
     return true;
 }
 
-void UserService::updateNickname(const QString &nickname)
+bool UserService::recharge(double amount, QString *err)
 {
-    m_current.nickname = nickname;
+    if (m_current.phone.isEmpty()) {
+        if (err) *err = QStringLiteral("尚未登录");
+        return false;
+    }
+    const qint64 cents = qRound64(amount * 100.0);
+    if (cents <= 0) {
+        if (err) *err = QStringLiteral("充值金额需为正数");
+        return false;
+    }
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
+        QStringLiteral("/api/wallet/recharge"),
+        QJsonObject{{QStringLiteral("phone"), m_current.phone},
+                    {QStringLiteral("amount_cents"), double(cents)}});
+    if (!r.ok) {
+        if (err) *err = r.message.isEmpty() ? QStringLiteral("充值失败(网络不可达后端)")
+                                            : r.message;
+        return false;
+    }
+    m_current = userFromJson(
+        r.data.toObject().value(QStringLiteral("user")).toObject());
+    if (err) err->clear();
+    return true;
 }
 
-void UserService::updateAvatar(const QString &avatarPath)
+bool UserService::updateNickname(const QString &nickname, QString *err)
 {
-    m_current.avatarPath = avatarPath;
+    if (m_current.phone.isEmpty()) {
+        if (err) *err = QStringLiteral("尚未登录");
+        return false;
+    }
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
+        QStringLiteral("/api/user/profile"),
+        QJsonObject{{QStringLiteral("phone"), m_current.phone},
+                    {QStringLiteral("nickname"), nickname}});
+    if (!r.ok) {
+        if (err) *err = r.message.isEmpty() ? QStringLiteral("改昵称失败") : r.message;
+        return false;
+    }
+    m_current = userFromJson(
+        r.data.toObject().value(QStringLiteral("user")).toObject());
+    if (err) err->clear();
+    return true;
 }
 
-void UserService::recharge(double amount)
+bool UserService::uploadAvatar(const QString &filePath, QString *err)
 {
-    m_current.balance += amount;
+    if (m_current.phone.isEmpty()) {
+        if (err) *err = QStringLiteral("尚未登录");
+        return false;
+    }
+    const QImage img(filePath);
+    if (img.isNull()) {
+        if (err) *err = QStringLiteral("图片加载失败");
+        return false;
+    }
+    QByteArray png;
+    QBuffer buf(&png);
+    buf.open(QIODevice::WriteOnly);
+    if (!img.save(&buf, "PNG")) {
+        if (err) *err = QStringLiteral("图片转码失败");
+        return false;
+    }
+    const QByteArray phone = QUrl::toPercentEncoding(m_current.phone);
+    QString uploadErr;
+    const bool up = ncsfe::BackendClient::postRaw(
+        QStringLiteral("/api/user/avatar?phone=%1&ext=png").arg(QString::fromUtf8(phone)),
+        png, QByteArrayLiteral("application/octet-stream"), &uploadErr);
+    if (!up) {
+        if (err) *err = uploadErr;
+        return false;
+    }
+    // 下载到本地缓存路径供 QPixmap 展示
+    QString cachePath;
+    {
+        const QByteArray phone2 = QUrl::toPercentEncoding(m_current.phone);
+        QString dlErr;
+        const QByteArray bytes = ncsfe::BackendClient::getBytes(
+            QStringLiteral("/uploads/avatar_%1.png").arg(QString::fromUtf8(phone2)),
+            &dlErr);
+        if (bytes.isEmpty()) {
+            if (err) *err = dlErr.isEmpty() ? QStringLiteral("头像下载失败") : dlErr;
+            return false;
+        }
+        cachePath = QDir::temp().filePath(
+            QStringLiteral("ncs_avatar_%1.png").arg(m_current.phone));
+        QFile f(cachePath);
+        if (!f.open(QIODevice::WriteOnly) ||
+            f.write(bytes) != bytes.size()) {
+            if (err) *err = QStringLiteral("头像缓存失败");
+            return false;
+        }
+        f.close();
+    }
+    m_current.avatarPath = cachePath;
+    if (err) err->clear();
+    return true;
 }
 
 void UserService::deduct(double amount)

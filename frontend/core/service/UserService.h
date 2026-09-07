@@ -31,10 +31,10 @@ public:
     // 校验手机号格式(11 位、以 1 开头)。
     static bool isValidPhone(const QString &phone);
 
-    void updateNickname(const QString &nickname);
-    void updateAvatar(const QString &avatarPath);
-    void recharge(double amount);
-    void deduct(double amount); // 扣款(BR-06: 余额不足扣至 0)
+    bool recharge(double amount, QString *err = nullptr);            // 走后端充值
+    bool updateNickname(const QString &nickname, QString *err = nullptr); // 走后端改昵称
+    bool uploadAvatar(const QString &filePath, QString *err = nullptr);   // 上传头像→本地缓存路径
+    void deduct(double amount); // 仅本地展示用(BR-06 演示),不做后端扣款
 
     const User &current() const { return m_current; }
 

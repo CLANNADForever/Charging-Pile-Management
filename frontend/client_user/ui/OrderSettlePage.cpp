@@ -10,7 +10,9 @@
 
 OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
     : Page(parent)
+    , m_orderNo(orderNo)
     , m_order(ChargeService::instance().orderDetail(orderNo))
+    , m_pending(ChargeService::instance().isPendingPay(orderNo))
 {
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -28,7 +30,9 @@ OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
     success->setStyleSheet(QStringLiteral("color:#00B368; font-size:48px; font-weight:bold;"));
     body->addWidget(success);
 
-    auto *successText = new QLabel(QStringLiteral("结算成功"), this);
+    auto *successText = new QLabel(m_pending ? QStringLiteral("已结束(待支付)")
+                                              : QStringLiteral("结算成功"),
+                                   this);
     successText->setObjectName(QStringLiteral("sectionTitle"));
     successText->setAlignment(Qt::AlignCenter);
     body->addWidget(successText);
@@ -46,7 +50,6 @@ OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
         value->setWordWrap(true);
         form->addRow(k, value);
     };
-
     addRow(QStringLiteral("订单号"), m_order.orderNo);
     addRow(QStringLiteral("电站名"), m_order.stationName);
     addRow(QStringLiteral("电桩编号"), m_order.chargerNo);
@@ -56,10 +59,31 @@ OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
     addRow(QStringLiteral("电量"), QString::number(m_order.energy, 'f', 1) + QStringLiteral(" 度"));
     addRow(QStringLiteral("单价"), Utils::formatMoney(m_order.unitPrice) + QStringLiteral(" 元/度"));
     addRow(QStringLiteral("总金额"), QStringLiteral("¥ ") + Utils::formatMoney(m_order.amount));
-    addRow(QStringLiteral("扣款后余额"), QStringLiteral("¥ ") + Utils::formatMoney(m_order.balanceAfter));
+    {
+        m_balanceAfterLabel = new QLabel(QStringLiteral("¥ ") + Utils::formatMoney(m_order.balanceAfter));
+        m_balanceAfterLabel->setObjectName(QStringLiteral("valueLabel"));
+        m_balanceAfterLabel->setWordWrap(true);
+        form->addRow(QStringLiteral("扣款后余额"), m_balanceAfterLabel);
+    }
 
     body->addWidget(card);
     body->addStretch(1);
+
+    // 待支付账单 → "立即支付"(余额不足由后端拒付并提示)
+    if (m_pending) {
+        m_payTip = new QLabel(this);
+        m_payTip->setObjectName(QStringLiteral("hintLabel"));
+        m_payTip->setAlignment(Qt::AlignCenter);
+        m_payTip->setWordWrap(true);
+        body->addWidget(m_payTip);
+
+        m_payBtn = new QPushButton(QStringLiteral("立即支付 ¥ %1")
+                                       .arg(Utils::formatMoney(m_order.amount)),
+                                   this);
+        m_payBtn->setObjectName(QStringLiteral("primaryButton"));
+        connect(m_payBtn, &QPushButton::clicked, this, &OrderSettlePage::onPay);
+        body->addWidget(m_payBtn);
+    }
 
     auto *doneBtn = new QPushButton(QStringLiteral("完成"), this);
     doneBtn->setObjectName(QStringLiteral("primaryButton"));
@@ -67,4 +91,21 @@ OrderSettlePage::OrderSettlePage(const QString &orderNo, QWidget *parent)
     body->addWidget(doneBtn);
 
     root->addLayout(body, 1);
+}
+
+void OrderSettlePage::onPay()
+{
+    const QString err = ChargeService::instance().pay(m_orderNo);
+    if (!err.isEmpty()) {
+        m_payTip->setText(err);
+        m_payTip->setStyleSheet(QStringLiteral("color:#EF4444;"));
+        return;
+    }
+    m_order = ChargeService::instance().orderDetail(m_orderNo);
+    if (m_balanceAfterLabel)
+        m_balanceAfterLabel->setText(QStringLiteral("¥ ") +
+                                     Utils::formatMoney(m_order.balanceAfter));
+    m_payTip->setText(QStringLiteral("支付成功"));
+    m_payTip->setStyleSheet(QStringLiteral("color:#00B368;"));
+    m_payBtn->setEnabled(false);
 }

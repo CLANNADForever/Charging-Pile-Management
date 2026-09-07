@@ -205,6 +205,10 @@ void ChargePage::onReserve()
 
     const int chargerId = item->data(Qt::UserRole).toInt();
     const Order order = ChargeService::instance().createReservation(m_stationId, chargerId);
+    if (order.status < 0) {
+        Toast::show(this, ChargeService::instance().lastError());
+        return;
+    }
     m_orderNo = order.orderNo;
     m_power = order.power;
     m_unitPrice = order.unitPrice;
@@ -258,6 +262,11 @@ void ChargePage::onStopCharge()
     m_chargeTimer->stop();
     const double energy = m_power * m_simSeconds / 3600.0;
     const double amount = energy * m_unitPrice;
-    ChargeService::instance().settle(m_orderNo, energy, amount, m_simSeconds);
+    const Order after =
+        ChargeService::instance().settle(m_orderNo, energy, amount, m_simSeconds);
+    if (after.orderNo.isEmpty()) {
+        Toast::show(this, ChargeService::instance().lastError());
+        return;
+    }
     emit settleRequested(m_orderNo);
 }

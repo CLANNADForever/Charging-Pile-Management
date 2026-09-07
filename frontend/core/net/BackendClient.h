@@ -25,6 +25,12 @@ public:
     static Reply get(const QString &path);
     static Reply post(const QString &path, const QJsonObject &body);
 
+    // 原始 body 上传(头像 PNG 等)；err 空=成功
+    static bool postRaw(const QString &path, const QByteArray &body,
+                        const QByteArray &contentType, QString *err);
+    // 原始字节下载；失败返回空并写 err
+    static QByteArray getBytes(const QString &path, QString *err);
+
 private:
     static Reply request(const QByteArray &verb, const QString &path,
                          const QJsonObject *body);
