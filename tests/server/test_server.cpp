@@ -409,6 +409,17 @@ int main() {
                   "viewer: read stats ok");
         }
 
+        // 运维：手工标记故障 / 恢复正常(admin)
+        {
+            auto onF = postAuth("/api/admin/devices/2/fault", "{\"on\":true}");
+            check(onF && onF->body.find("\"code\":0") != std::string::npos &&
+                      onF->body.find("\"state\":2") != std::string::npos,
+                  "admin: manual fault device2");
+            auto offF = postAuth("/api/admin/devices/2/fault", "{\"on\":false}");
+            check(offF && offF->body.find("\"code\":0") != std::string::npos &&
+                      offF->body.find("\"state\":0") != std::string::npos,
+                  "admin: manual restore device2");
+        }
         // 模拟器自主故障 → 故障 → 远程重启 → 心跳恢复 全链路(#7)
         {
             const int fd = socket(AF_INET, SOCK_STREAM, 0);

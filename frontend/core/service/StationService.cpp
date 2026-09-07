@@ -210,12 +210,12 @@ Charger StationService::chargerById(int id) const
 
 void StationService::setChargerStatus(int id, int status)
 {
-    for (Charger &c : m_chargers) {
-        if (c.id == id) {
-            c.status = status;
-            return;
-        }
-    }
+    if (ncsfe::BackendClient::token().isEmpty())
+        return;
+    const bool on = (status == 2);  // 2=故障；0=恢复
+    ncsfe::BackendClient::post(
+        QStringLiteral("/api/admin/devices/%1/fault").arg(id),
+        QJsonObject{{QStringLiteral("on"), on}});
 }
 
 void StationService::incrementChargerCount(int id)
@@ -265,104 +265,76 @@ QList<Charger> StationService::allChargers() const
 void StationService::addCharger(int stationId, const QString &code,
                                 const QString &type, double power)
 {
-    // 用「最大 id + 1」而非 size()+1,避免删除后再新增导致 id 冲突。
-    int nextId = 0;
-    for (const Charger &c : m_chargers)
-        if (c.id > nextId)
-            nextId = c.id;
-    ++nextId;
-
-    Charger c;
-    c.id = nextId;
-    c.stationId = stationId;
-    c.code = code;
-    c.type = type;
-    c.power = power;
-    c.status = 0;
-    c.totalCount = 0;
-    c.totalMinutes = 0;
-    m_chargers.append(c);
+    if (ncsfe::BackendClient::token().isEmpty())
+        return;
+    const int t = power < 30.0 ? 1 : 0;
+    ncsfe::BackendClient::post(
+        QStringLiteral("/api/admin/stations/%1/devices").arg(stationId),
+        QJsonObject{{QStringLiteral("count"), 1},
+                    {QStringLiteral("type"), t},
+                    {QStringLiteral("power_kw"), power}});
 }
 
 bool StationService::deleteCharger(int chargerId)
 {
-    for (int i = 0; i < m_chargers.size(); ++i) {
-        if (m_chargers[i].id == chargerId) {
-            if (m_chargers[i].status == 1)
-                return false; // 使用中禁止删除
-            m_chargers.removeAt(i);
-            return true;
-        }
-    }
-    return false;
+    if (ncsfe::BackendClient::token().isEmpty())
+        return false;
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::sendDelete(
+        QStringLiteral("/api/admin/devices/%1").arg(chargerId));
+    return r.ok;
 }
 
 int StationService::addStation(const QString &name, const QString &address,
                                double lat, double lon, double price,
                                int chargerCount, double defaultPower)
 {
-    Station s;
-    s.id = m_stations.isEmpty() ? 1 : m_stations.last().id + 1;
-    s.name = name;
-    s.address = address;
-    s.latitude = lat;
-    s.longitude = lon;
-    s.unitPrice = price;
-    s.openHours = QStringLiteral("00:00-24:00");
-    s.hasCoupon = false;
-    s.parkingFree = false;
-    m_stations.append(s);
-
-    // 用「最大 id + 1」连续分配,避免与现存电桩 id 冲突。
-    int nextId = 0;
-    for (const Charger &c : m_chargers)
-        if (c.id > nextId)
-            nextId = c.id;
-    ++nextId;
-
-    const QString prefix = name.left(2);
-    for (int i = 0; i < chargerCount; ++i) {
-        Charger c;
-        c.id = nextId++;
-        c.stationId = s.id;
-        c.code = prefix + QStringLiteral("-%1").arg(i + 1, 2, 10, QLatin1Char('0'));
-        c.type = defaultPower >= 30.0 ? QStringLiteral("快充") : QStringLiteral("慢充");
-        c.power = defaultPower;
-        c.status = 0;
-        c.totalCount = 0;
-        c.totalMinutes = 0;
-        m_chargers.append(c);
+    if (ncsfe::BackendClient::token().isEmpty())
+        return -1;
+    const qint64 priceCents = static_cast<qint64>(std::llround(price * 100.0));
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
+        QStringLiteral("/api/admin/stations"),
+        QJsonObject{{QStringLiteral("name"), name},
+                    {QStringLiteral("address"), address},
+                    {QStringLiteral("latitude"), lat},
+                    {QStringLiteral("longitude"), lon},
+                    {QStringLiteral("price_cents"), double(priceCents)}});
+    if (!r.ok || !r.data.isObject())
+        return -1;
+    const int sid = r.data.toObject().value(QStringLiteral("id")).toInt(-1);
+    if (sid <= 0)
+        return -1;
+    if (chargerCount > 0) {
+        const int t = defaultPower < 30.0 ? 1 : 0;
+        ncsfe::BackendClient::post(
+            QStringLiteral("/api/admin/stations/%1/devices").arg(sid),
+            QJsonObject{{QStringLiteral("count"), chargerCount},
+                        {QStringLiteral("type"), t},
+                        {QStringLiteral("power_kw"), defaultPower}});
     }
-    return s.id;
+    return sid;
 }
 
 bool StationService::updateStation(int id, const QString &name, const QString &address,
                                    double lat, double lon, double price)
 {
-    for (Station &s : m_stations) {
-        if (s.id == id) {
-            s.name = name;
-            s.address = address;
-            s.latitude = lat;
-            s.longitude = lon;
-            s.unitPrice = price;
-            return true;
-        }
-    }
-    return false;
+    if (ncsfe::BackendClient::token().isEmpty())
+        return false;
+    const qint64 priceCents = static_cast<qint64>(std::llround(price * 100.0));
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::patch(
+        QStringLiteral("/api/admin/stations/%1").arg(id),
+        QJsonObject{{QStringLiteral("name"), name},
+                    {QStringLiteral("address"), address},
+                    {QStringLiteral("latitude"), lat},
+                    {QStringLiteral("longitude"), lon},
+                    {QStringLiteral("price_cents"), double(priceCents)}});
+    return r.ok;
 }
 
 bool StationService::deleteStation(int id)
 {
-    for (const Charger &c : m_chargers) {
-        if (c.stationId == id)
-            return false; // BR-10:有电桩禁止删除
-    }
-    for (int i = 0; i < m_stations.size(); ++i) {
-        if (m_stations[i].id == id) {
-            m_stations.removeAt(i);
-            return true;
-        }
-    }
-    return false;
+    if (ncsfe::BackendClient::token().isEmpty())
+        return false;
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::sendDelete(
+        QStringLiteral("/api/admin/stations/%1").arg(id));
+    return r.ok;
 }

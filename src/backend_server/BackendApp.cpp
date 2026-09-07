@@ -1170,6 +1170,79 @@ void BackendApp::registerRoutes() {
                   replyOk(res, json{{"state", static_cast<int>(ncs::DeviceState::Rebooting)}});
               });
 
+    // B 端运维：手动 标记故障 / 恢复正常(仅 super/operator；事务+运维+审计)
+    srv_.Post(R"(/api/admin/devices/(\d+)/fault)",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  QString user, role;
+                  if (!requireAdmin(req, res, &user, &role))
+                      return;
+                  if (!canDo(role, "device.restart")) {
+                      reply(res, kCodeForbid,
+                            "无权限执行设备运维(需运维角色以上)", nullptr);
+                      return;
+                  }
+                  if (req.matches.size() < 2) {
+                      reply(res, kCodeBadReq, "缺桩 id", nullptr);
+                      return;
+                  }
+                  bool on = true;
+                  try {
+                      on = json::parse(req.body).value("on", true);
+                  } catch (...) {
+                  }
+                  const int id = std::stoi(req.matches[1]);
+                  ncs::Device d;
+                  if (!store_.getDeviceById(id, &d)) {
+                      replyBizErr(res, QStringLiteral("桩不存在"));
+                      return;
+                  }
+                  if (!store_.beginTx()) {
+                      replyBizErr(res, QStringLiteral("服务繁忙，请稍后再试"));
+                      return;
+                  }
+                  int newState = -1;
+                  bool ok = false;
+                  if (on) {
+                      if (d.state == ncs::DeviceState::Idle) {
+                          store_.setDeviceState(
+                              id, static_cast<int>(ncs::DeviceState::Fault));
+                          store_.adjustStationFree(d.stationId, -1);
+                          newState = static_cast<int>(ncs::DeviceState::Fault);
+                          ok = true;
+                          store_.appendDeviceOp(
+                              id, QStringLiteral("fault"), user,
+                              QStringLiteral("手工标记故障"));
+                      }
+                  } else {
+                      if (d.state == ncs::DeviceState::Fault ||
+                          d.state == ncs::DeviceState::Rebooting) {
+                          store_.setDeviceState(
+                              id, static_cast<int>(ncs::DeviceState::Idle));
+                          store_.adjustStationFree(d.stationId, 1);
+                          newState = static_cast<int>(ncs::DeviceState::Idle);
+                          ok = true;
+                          store_.appendDeviceOp(
+                              id, QStringLiteral("recover"), user,
+                              QStringLiteral("手工恢复(恢复正常)"));
+                          std::lock_guard<std::mutex> lk(rebootingMu_);
+                          rebootingSince_.erase(id);
+                      }
+                  }
+                  if (ok) {
+                      store_.appendAudit(user, QStringLiteral("device.ops"),
+                                         on ? QStringLiteral("标记桩 #%1 故障").arg(id)
+                                            : QStringLiteral("恢复桩 #%1 正常").arg(id),
+                                         true);
+                      store_.commitTx();
+                      replyOk(res, json{{"state", newState}});
+                  } else {
+                      store_.rollbackTx();
+                      replyBizErr(
+                          res, on ? QStringLiteral("仅空闲桩可标记故障")
+                                  : QStringLiteral("仅故障/重启中桩可恢复"));
+                  }
+              });
+
     // 运维日志 / 审计日志(任意已登录角色可看；分页)
     srv_.Get("/api/admin/logs/ops",
              [this](const httplib::Request& req, httplib::Response& res) {
