@@ -250,6 +250,31 @@ Order ChargeService::settle(const QString &orderNo, double, double, int)
     return orderDetail(orderNo);
 }
 
+LiveStat ChargeService::live(const QString &orderNo) const
+{
+    LiveStat out;
+    const int id = orderNo.toInt();
+    if (id <= 0) {
+        out.message = QStringLiteral("订单号无效");
+        return out;
+    }
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(
+        QStringLiteral("/api/orders/%1/live").arg(id));
+    if (!r.ok || !r.data.isObject()) {
+        out.message = r.message.isEmpty() ? QStringLiteral("查询实时失败") : r.message;
+        return out;
+    }
+    const QJsonObject o = r.data.toObject();
+    out.ok = true;
+    out.backendStatus = o.value(QStringLiteral("status")).toInt();
+    out.energy = o.value(QStringLiteral("energy_kwh")).toDouble();
+    out.amount = o.value(QStringLiteral("amount_cents")).toDouble() / 100.0;
+    out.power = o.value(QStringLiteral("power_kw")).toDouble();
+    out.soc = o.value(QStringLiteral("soc_pct")).toInt();
+    out.elapsedSec = o.value(QStringLiteral("elapsed_sec")).toInt();
+    return out;
+}
+
 bool ChargeService::isPendingPay(const QString &orderNo) const
 {
     const int id = orderNo.toInt();

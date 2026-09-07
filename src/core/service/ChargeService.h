@@ -24,6 +24,18 @@ struct Order
     bool    paid = false;  // 前端区分“已完成(已支付) vs 待支付”
 };
 
+struct LiveStat
+{
+    bool ok = false;
+    QString message;
+    double energy = 0.0;
+    double amount = 0.0;   // 元
+    double power = 0.0;    // kW
+    int soc = 0;
+    int elapsedSec = 0;
+    int backendStatus = -1;
+};
+
 // 订单/充电服务(后端权威)。结算=finish(只出待支付账单)；支付=pay 单独(余额不足拒付)。
 class ChargeService
 {
@@ -34,6 +46,7 @@ public:
     QList<Order> listOrders(int statusFilter = -1) const;
 
     Order orderDetail(const QString &orderNo) const;
+    LiveStat live(const QString &orderNo) const;  // 充电中实时(走后端)
 
     // 某用户的订单(管理端 UC-A-07 双击查看)。
     QList<Order> listOrdersByPhone(const QString &phone) const;

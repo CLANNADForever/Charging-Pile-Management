@@ -18,8 +18,13 @@ int main(int argc, char *argv[])
     QObject::connect(login, &LoginWindow::loginSucceeded, [&]() {
         if (!win) {
             win = new MainWindow;
+            // 登出=销毁并重建主窗口(避免“换号登录显示上一个人”)
             QObject::connect(win, &MainWindow::logoutRequested, [&]() {
-                win->close();
+                if (win) {
+                    win->close();
+                    delete win;
+                    win = nullptr;
+                }
                 login->reset();
                 login->show();
             });
