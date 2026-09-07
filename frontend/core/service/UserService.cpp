@@ -68,6 +68,18 @@ QString UserService::login(const QString &phone, const QString &code)
     return QStringLiteral("登录失败(网络不可达后端)");
 }
 
+namespace {
+QJsonObject replyUserData(const QJsonValue &d)
+{
+    if (!d.isObject())
+        return QJsonObject();
+    QJsonObject o = d.toObject();
+    if (o.contains(QStringLiteral("user")))
+        return o.value(QStringLiteral("user")).toObject();
+    return o;
+}
+}  // namespace
+
 bool UserService::isValidPhone(const QString &phone)
 {
     if (phone.length() != 11)
@@ -101,8 +113,7 @@ bool UserService::recharge(double amount, QString *err)
                                             : r.message;
         return false;
     }
-    m_current = userFromJson(
-        r.data.toObject().value(QStringLiteral("user")).toObject());
+    m_current = userFromJson(replyUserData(r.data));
     if (err) err->clear();
     return true;
 }
@@ -121,8 +132,7 @@ bool UserService::updateNickname(const QString &nickname, QString *err)
         if (err) *err = r.message.isEmpty() ? QStringLiteral("改昵称失败") : r.message;
         return false;
     }
-    m_current = userFromJson(
-        r.data.toObject().value(QStringLiteral("user")).toObject());
+    m_current = userFromJson(replyUserData(r.data));
     if (err) err->clear();
     return true;
 }

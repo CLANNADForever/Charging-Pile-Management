@@ -208,14 +208,39 @@ Charger StationService::chargerById(int id) const
     return Charger();
 }
 
-void StationService::setChargerStatus(int id, int status)
+bool StationService::setChargerStatus(int id, int status, QString *err)
 {
-    if (ncsfe::BackendClient::token().isEmpty())
-        return;
+    if (ncsfe::BackendClient::token().isEmpty()) {
+        if (err) *err = QStringLiteral("未登录管理端");
+        return false;
+    }
     const bool on = (status == 2);  // 2=故障；0=恢复
-    ncsfe::BackendClient::post(
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
         QStringLiteral("/api/admin/devices/%1/fault").arg(id),
         QJsonObject{{QStringLiteral("on"), on}});
+    if (!r.ok) {
+        if (err) *err = r.message.isEmpty() ? QStringLiteral("操作失败") : r.message;
+        return false;
+    }
+    if (err) err->clear();
+    return true;
+}
+
+bool StationService::rebootCharger(int id, QString *err)
+{
+    if (ncsfe::BackendClient::token().isEmpty()) {
+        if (err) *err = QStringLiteral("未登录管理端");
+        return false;
+    }
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
+        QStringLiteral("/api/admin/devices/%1/restart").arg(id),
+        QJsonObject{});
+    if (!r.ok) {
+        if (err) *err = r.message.isEmpty() ? QStringLiteral("重启失败") : r.message;
+        return false;
+    }
+    if (err) err->clear();
+    return true;
 }
 
 void StationService::incrementChargerCount(int id)

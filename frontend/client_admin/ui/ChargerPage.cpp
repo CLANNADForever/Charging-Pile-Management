@@ -147,6 +147,7 @@ void ChargerPage::rebuildTable()
 
         auto *c0 = new QTableWidgetItem(c.code);
         c0->setData(Qt::UserRole, c.id);
+        c0->setData(Qt::UserRole + 1, c.status);
         auto *c1 = new QTableWidgetItem(stationNameOf(c.stationId));
         auto *c2 = new QTableWidgetItem(c.type);
         auto *c3 = new QTableWidgetItem(QString::number(c.power, 'f', 0));
@@ -178,11 +179,20 @@ int ChargerPage::selectedChargerId() const
 
 void ChargerPage::updateActionState()
 {
-    const bool has = selectedChargerId() >= 0;
-    m_rebootBtn->setEnabled(has);
-    m_faultBtn->setEnabled(has);
-    m_recoverBtn->setEnabled(has);
+    const int row = m_table->currentRow();
+    const bool has = row >= 0;
+    m_rebootBtn->setEnabled(false);
+    m_faultBtn->setEnabled(false);
+    m_recoverBtn->setEnabled(false);
     m_deleteBtn->setEnabled(has);
+    if (!has)
+        return;
+    const QTableWidgetItem *item = m_table->item(row, 0);
+    const int st = item ? item->data(Qt::UserRole + 1).toInt() : -1;
+    if (st == 0)
+        m_faultBtn->setEnabled(true);   // 空闲可标记故障
+    else if (st == 2)
+        m_rebootBtn->setEnabled(true), m_recoverBtn->setEnabled(true);  // 故障可重启/恢复
 }
 
 void ChargerPage::onAddCharger()
@@ -239,28 +249,18 @@ void ChargerPage::onReboot()
     const int id = selectedChargerId();
     if (id < 0)
         return;
-
     const Charger c = StationService::instance().chargerById(id);
-    if (c.status == 0) {
-        Toast::show(this, QStringLiteral("该电桩当前空闲,无需重启"));
+    if (c.status != 2) {
+        Toast::show(this, QStringLiteral("仅故障电桩可远程重启"));
         return;
     }
-    if (c.status == 1) {
-        const auto ret = QMessageBox::question(
-            this, QStringLiteral("远程重启"),
-            QStringLiteral("该电桩正在充电,重启会中断用户充电,是否继续?"),
-            QMessageBox::Yes | QMessageBox::No);
-        if (ret != QMessageBox::Yes)
-            return;
+    QString err;
+    if (!StationService::instance().rebootCharger(id, &err)) {
+        Toast::show(this, err);
+        return;
     }
-
-    m_rebootBtn->setEnabled(false);
-    Toast::show(this, QStringLiteral("正在重启..."));
-    QTimer::singleShot(2000, this, [this, id]() {
-        StationService::instance().setChargerStatus(id, 0);
-        rebuildTable();
-        Toast::show(this, QStringLiteral("重启完成,已恢复空闲"));
-    });
+    rebuildTable();
+    Toast::show(this, QStringLiteral("已下发远程重启,恢复后自动刷新"));
 }
 
 void ChargerPage::onMarkFault()
@@ -268,7 +268,16 @@ void ChargerPage::onMarkFault()
     const int id = selectedChargerId();
     if (id < 0)
         return;
-    StationService::instance().setChargerStatus(id, 2);
+    const Charger c = StationService::instance().chargerById(id);
+    if (c.status != 0) {
+        Toast::show(this, QStringLiteral("仅空闲电桩可标记故障"));
+        return;
+    }
+    QString err;
+    if (!StationService::instance().setChargerStatus(id, 2, &err)) {
+        Toast::show(this, err);
+        return;
+    }
     rebuildTable();
     Toast::show(this, QStringLiteral("已标记故障"));
 }
@@ -278,7 +287,16 @@ void ChargerPage::onRecover()
     const int id = selectedChargerId();
     if (id < 0)
         return;
-    StationService::instance().setChargerStatus(id, 0);
+    const Charger c = StationService::instance().chargerById(id);
+    if (c.status != 2) {
+        Toast::show(this, QStringLiteral("仅故障/重启中电桩可恢复正常"));
+        return;
+    }
+    QString err;
+    if (!StationService::instance().setChargerStatus(id, 0, &err)) {
+        Toast::show(this, err);
+        return;
+    }
     rebuildTable();
     Toast::show(this, QStringLiteral("已恢复正常"));
 }

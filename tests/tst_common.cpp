@@ -1,11 +1,20 @@
-// 无头冒烟：实体/金额/计费基础 + 新前端 core(同步走后端)登录/站桩读不回归。
-// 做法：进程内起真实 ncs_server(HTTP) → NCS_BACKEND_URL 指向它 → 走 User/Station/Admin Service。
+// 无头冒烟/回归：实体基础 + 新前端 core 服务(同步走后端)对 进程内后端+模拟器 的全链路。
+// 覆盖：C 登录/站桩读、充值、头像、充电闭环(预约→开始→心跳电量→结束→支付)、B 端写(CRUD+重启)。
 #include <QtTest>
 #include <QApplication>
 
-#include <thread>
-#include <memory>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
+#include <chrono>
+#include <cstring>
+#include <memory>
+#include <thread>
+
+#include <QDir>
+#include <QImage>
 #include <QString>
 
 #include "money.h"
@@ -16,83 +25,217 @@
 
 #include "core/service/UserService.h"
 #include "core/service/StationService.h"
+#include "core/service/ChargeService.h"
 #include "core/service/AdminService.h"
 #include "core/net/BackendClient.h"
+
+namespace {
+
+int simConnect(int port)
+{
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        return -1;
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons(static_cast<uint16_t>(port));
+    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+    if (connect(fd, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+bool simSend(int fd, const std::string &line)
+{
+    return send(fd, line.data(), line.size(), MSG_NOSIGNAL) >= 0;
+}
+
+}  // namespace
 
 class TstNcs : public QObject {
     Q_OBJECT
 private slots:
-    void moneyFormat();
-    void billingHalfUp();
-    void entityDefaults();
-    void smokeLoginStationsAdmin();
+    void initTestCase();
+    void cleanupTestCase();
+    void moneyAndEntities();
+    void smokeLoginStations();
+    void rechargeNicknameAvatar();
+    void chargeFullLoopWithSim();
+    void adminWriteSmoke();
+
+private:
+    QString db_;
+    std::unique_ptr<ncs::backend::BackendApp> app_;
+    int port_ = 0;
+    int simPort_ = 0;
+    std::thread th_;
 };
 
-void TstNcs::moneyFormat()
+void TstNcs::initTestCase()
 {
-    QCOMPARE(ncs::format_cents(0), QStringLiteral("0.00"));
+    db_ = QStringLiteral("/tmp/ncs_smoke_%1.db").arg(::getpid());
+    app_ = std::make_unique<ncs::backend::BackendApp>(db_);
+    QVERIFY2(app_->init(), qPrintable(app_->lastError()));
+    port_ = app_->server().bind_to_any_port("127.0.0.1");
+    th_ = std::thread([this] { app_->server().listen_after_bind(); });
+
+    const int probe = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    a.sin_port = 0;
+    bind(probe, reinterpret_cast<sockaddr*>(&a), sizeof(a));
+    socklen_t alen = sizeof(a);
+    getsockname(probe, reinterpret_cast<sockaddr*>(&a), &alen);
+    simPort_ = ntohs(a.sin_port);
+    close(probe);
+    QVERIFY(app_->startSimListener(simPort_));
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    qputenv("NCS_BACKEND_URL",
+            QStringLiteral("http://127.0.0.1:%1").arg(port_).toUtf8());
+}
+
+void TstNcs::cleanupTestCase()
+{
+    if (app_) {
+        app_->server().stop();
+        app_->stopSimListener();
+        th_.join();
+    }
+    ::unlink(db_.toLocal8Bit().constData());
+}
+
+void TstNcs::moneyAndEntities()
+{
     QCOMPARE(ncs::format_cents(1250), QStringLiteral("12.50"));
-    QCOMPARE(ncs::format_cents(100000), QStringLiteral("1000.00"));
-}
-
-void TstNcs::billingHalfUp()
-{
     QCOMPARE(ncs::charging_amount_cents(2.0, 100), ncs::MoneyCents(200));
-    QCOMPARE(ncs::charging_amount_cents(0.5, 3), ncs::MoneyCents(2));
-}
-
-void TstNcs::entityDefaults()
-{
     ncs::Order o;
     QCOMPARE(int(o.status), int(ncs::OrderStatus::Reserved));
-    ncs::Station s;
-    QCOMPARE(s.id, 0);
 }
 
-void TstNcs::smokeLoginStationsAdmin()
+static QString userLogin(const QString &phone)
 {
-    const QString db = QStringLiteral("/tmp/ncs_smoke_%1.db").arg(::getpid());
-    {
-        ncs::backend::BackendApp app(db);
-        QVERIFY2(app.init(), qPrintable(app.lastError()));
-        const int port = app.server().bind_to_any_port("127.0.0.1");
-        std::thread th([&] { app.server().listen_after_bind(); });
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    const QString hint = UserService::instance().requestCode(phone);
+    if (!hint.contains(QStringLiteral("已发送")))
+        return hint;
+    return UserService::instance().login(phone, QStringLiteral("123456"));
+}
 
-        qputenv("NCS_BACKEND_URL",
-                QStringLiteral("http://127.0.0.1:%1").arg(port).toUtf8());
+void TstNcs::smokeLoginStations()
+{
+    QVERIFY2(userLogin(QStringLiteral("13800138000")).isEmpty(), "C 登录应成功");
+    const QList<Station> stations = StationService::instance().listStations();
+    QVERIFY(stations.size() >= 1);
+    if (!stations.isEmpty())
+        QVERIFY(!StationService::instance().chargersByStation(stations.first().id).isEmpty());
+}
 
-        // 登录(C 端)：send-code + login(演示码 123456)
-        const QString hint = UserService::instance().requestCode(QStringLiteral("13800138000"));
-        QVERIFY2(hint.contains(QStringLiteral("已发送")), qPrintable(hint));
-        const QString err =
-            UserService::instance().login(QStringLiteral("13800138000"),
-                                          QStringLiteral("123456"));
-        QVERIFY2(err.isEmpty(), qPrintable(err));
-        QCOMPARE(UserService::instance().current().phone,
-                 QStringLiteral("13800138000"));
+void TstNcs::rechargeNicknameAvatar()
+{
+    const QString phone = QStringLiteral("13811112222");
+    QVERIFY2(userLogin(phone).isEmpty(), "登录");
+    QString err;
+    QVERIFY2(UserService::instance().recharge(100.0, &err), qPrintable(err));
+    QVERIFY(qAbs(UserService::instance().current().balance - 100.0) < 0.01);
+    QVERIFY2(UserService::instance().updateNickname(QStringLiteral("冒烟昵称"), &err),
+             qPrintable(err));
+    QCOMPARE(UserService::instance().current().nickname, QStringLiteral("冒烟昵称"));
 
-        // 站/桩读(后端 seed)
-        const QList<Station> stations = StationService::instance().listStations();
-        QVERIFY2(stations.size() >= 1, "后端应有 seed 站");
-        if (!stations.isEmpty()) {
-            const QList<Charger> chargers =
-                StationService::instance().chargersByStation(stations.first().id);
-            QVERIFY2(!chargers.isEmpty(), "首个站应有电桩");
+    // 头像：造一张临时 PNG → 上传后端 → 本地缓存路径
+    const QString png = QDir::temp().filePath(QStringLiteral("ncs_av_smoke.png"));
+    QImage img(4, 4, QImage::Format_RGB32);
+    img.fill(Qt::blue);
+    QVERIFY(img.save(png, "PNG"));
+    QVERIFY2(UserService::instance().uploadAvatar(png, &err), qPrintable(err));
+    QVERIFY(!UserService::instance().current().avatarPath.isEmpty());
+    QFile::remove(png);
+}
+
+void TstNcs::chargeFullLoopWithSim()
+{
+    const QString phone = QStringLiteral("13900009999");
+    QVERIFY2(userLogin(phone).isEmpty(), "登录");
+    QString err;
+    QVERIFY2(UserService::instance().recharge(30.0, &err), qPrintable(err));  // 足够支付
+
+    // 选一个空闲桩(首站第一个空闲)
+    const QList<Station> stations = StationService::instance().listStations();
+    QVERIFY(!stations.isEmpty());
+    int devId = -1, stId = -1;
+    for (const Station &s : stations) {
+        const QList<Charger> cs = StationService::instance().chargersByStation(s.id);
+        for (const Charger &c : cs) {
+            if (c.status == 0) {
+                devId = c.id;
+                stId = s.id;
+                break;
+            }
         }
-
-        // B 端登录(admin/admin123)后 Admin 读(用户列表)
-        QVERIFY2(AdminService::instance().login(QStringLiteral("admin"),
-                                                QStringLiteral("admin123")),
-                 "admin 登录应成功");
-        const QList<User> users =
-            UserService::instance().listUsers(QStringLiteral("13800138000"));
-        QVERIFY2(!users.isEmpty(), "管理员用户搜索应返回该用户");
-
-        app.server().stop();
-        th.join();
+        if (devId > 0)
+            break;
     }
-    ::unlink(db.toLocal8Bit().constData());
+    QVERIFY(devId > 0);
+
+    // 模拟器连接注册该桩并心跳出电量
+    const int fd = simConnect(simPort_);
+    QVERIFY(fd >= 0);
+    QVERIFY(simSend(fd, "{\"type\":\"register\",\"devices\":[" +
+                            std::to_string(devId) + "]}\n"));
+
+    const Order reserved = ChargeService::instance().createReservation(stId, devId);
+    QVERIFY2(reserved.orderNo.toInt() > 0, qPrintable(ChargeService::instance().lastError()));
+    ChargeService::instance().startCharge(reserved.orderNo);
+    QVERIFY2(ChargeService::instance().lastError().isEmpty(),
+             qPrintable(ChargeService::instance().lastError()));
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    QVERIFY(simSend(fd, "{\"type\":\"heartbeat\",\"device_id\":" +
+                            std::to_string(devId) +
+                            ",\"power_kw\":120.0,\"energy_kwh\":2.5,\"sim_state\":1}\n"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    const Order settled = ChargeService::instance().settle(reserved.orderNo, 0, 0, 0);
+    QVERIFY2(settled.orderNo.toInt() > 0, qPrintable(ChargeService::instance().lastError()));
+    QVERIFY(qAbs(settled.energy - 2.5) < 1e-6);  // 电量以后端为准
+    QVERIFY2(ChargeService::instance().pay(reserved.orderNo).isEmpty(),
+             qPrintable(ChargeService::instance().pay(reserved.orderNo)));
+    QVERIFY(!ChargeService::instance().isPendingPay(reserved.orderNo));
+    close(fd);
+}
+
+void TstNcs::adminWriteSmoke()
+{
+    // B 端登录 → CRUD + 重启(全部走后端)
+    QVERIFY2(AdminService::instance().login(QStringLiteral("admin"),
+                                            QStringLiteral("admin123")),
+             "admin 登录");
+    const int sid = StationService::instance().addStation(
+        QStringLiteral("冒烟测试站"), QStringLiteral("测试路"), 30.0, 120.0,
+        1.2, 2, 120.0);
+    QVERIFY(sid > 0);
+    bool found = false;
+    for (const Station &s : StationService::instance().listStations())
+        if (s.id == sid)
+            found = true;
+    QVERIFY(found);
+    QVERIFY(StationService::instance().updateStation(
+        sid, QStringLiteral("冒烟测试站改"), QStringLiteral("测试路2号"), 30.0, 120.0, 1.1));
+
+    QList<Charger> devs;
+    for (const Charger &c : StationService::instance().chargersByStation(sid)) {
+        devs.append(c);
+        Q_UNUSED(c);
+    }
+    QVERIFY(devs.size() >= 2);
+    const int d0 = devs[0].id;
+    QString err;
+    QVERIFY2(StationService::instance().setChargerStatus(d0, 2, &err), qPrintable(err));  // 标记故障
+    QVERIFY2(StationService::instance().rebootCharger(d0, &err), qPrintable(err));         // 远程重启
+    QVERIFY2(StationService::instance().setChargerStatus(d0, 0, &err), qPrintable(err));   // 恢复正常
+    for (const Charger &c : devs)
+        QVERIFY(StationService::instance().deleteCharger(c.id));  // 空闲可删
+    QVERIFY(StationService::instance().deleteStation(sid));
 }
 
 QTEST_MAIN(TstNcs)

@@ -50,7 +50,9 @@ public:
     Station stationDetail(int id) const;
     QList<Charger> chargersByStation(int stationId) const;
     Charger chargerById(int id) const;
-    void setChargerStatus(int id, int status);
+    // 运维：状态=2 标记故障(on)，状态=0 恢复正常；失败返回 false 并写 err
+    bool setChargerStatus(int id, int status, QString *err = nullptr);
+    bool rebootCharger(int id, QString *err = nullptr);  // 调后端远程重启(故障→重启→恢复)
     void incrementChargerCount(int id);
 
     // —— 管理端操作(UC-A-05 / UC-A-06)——
