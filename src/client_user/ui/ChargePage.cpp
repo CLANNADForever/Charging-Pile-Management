@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QTimer>
@@ -12,13 +13,14 @@
 
 #include "common/Toast.h"
 #include "common/Utils.h"
-#include "core/service/ChargeService.h"
 #include "core/service/StationService.h"
 #include "core/service/UserService.h"
 
 namespace {
+constexpr double kMinChargeAmount = 5.0; // 最低起充金额(BR-04)
 constexpr int kReserveSeconds = 15 * 60;
-}
+constexpr int kTimeScale = 60;           // 1 真实秒 = 60 模拟秒
+} // namespace
 
 ChargePage::ChargePage(int stationId, QWidget *parent)
     : Page(parent)
@@ -40,27 +42,18 @@ ChargePage::ChargePage(int stationId, QWidget *parent)
     m_chargeTimer->setInterval(1000);
     connect(m_chargeTimer, &QTimer::timeout, this, &ChargePage::onTick);
 
-    // 有待支付账单 → 引导去支付(本页不开新预约)
-    const QList<Order> orders = ChargeService::instance().listOrders(-1);
-    bool pending = false;
-    QString pendNo;
-    for (const Order &o : orders) {
-        if (o.status == 2 && !o.paid) {
-            pending = true;
-            pendNo = o.orderNo;
-            break;
-        }
-    }
-    if (pending) {
-        QTimer::singleShot(0, this, [this, pendNo]() {
+    // 拦截:已有未结算订单则先去结算,不进入选桩
+    if (ChargeService::instance().hasUnsettledOrder()) {
+        m_orderNo = ChargeService::instance().activeOrder().orderNo;
+        QTimer::singleShot(0, this, [this]() {
             QMessageBox box(this);
             box.setWindowTitle(QStringLiteral("提示"));
-            box.setText(QStringLiteral("您有待支付的账单，请先支付"));
+            box.setText(QStringLiteral("您有未完成的充电订单，请先结算"));
             box.setIcon(QMessageBox::Warning);
             box.setStandardButtons(QMessageBox::NoButton);
-            box.addButton(QStringLiteral("去支付"), QMessageBox::AcceptRole);
+            box.addButton(QStringLiteral("去结算"), QMessageBox::AcceptRole);
             box.exec();
-            emit settleRequested(pendNo);
+            emit settleRequested(m_orderNo);
         });
     } else {
         buildSelectView();
@@ -81,8 +74,7 @@ void ChargePage::buildSelectView()
     m_chargerList = new QListWidget(view);
     m_chargerList->setFrameShape(QFrame::NoFrame);
     m_chargerList->setSpacing(8);
-    const QList<Charger> chargers =
-        StationService::instance().chargersByStation(m_stationId);
+    const QList<Charger> chargers = StationService::instance().chargersByStation(m_stationId);
     for (const Charger &c : chargers) {
         if (c.status != 0)
             continue;
@@ -129,6 +121,7 @@ void ChargePage::buildReservedView(const Order &order)
     m_countdownLabel->setObjectName(QStringLiteral("hintLabel"));
     m_countdownLabel->setAlignment(Qt::AlignCenter);
     lay->addWidget(m_countdownLabel);
+
     lay->addStretch(1);
 
     auto *startBtn = new QPushButton(QStringLiteral("开始充电"), view);
@@ -140,8 +133,7 @@ void ChargePage::buildReservedView(const Order &order)
     m_viewStack->setCurrentWidget(view);
 
     m_reserveRemain = kReserveSeconds;
-    m_countdownLabel->setText(QStringLiteral("预约保留 ")
-                              + Utils::formatDuration(m_reserveRemain));
+    m_countdownLabel->setText(QStringLiteral("预约保留 ") + Utils::formatDuration(m_reserveRemain));
     m_reserveTimer->start();
 }
 
@@ -155,26 +147,38 @@ void ChargePage::buildChargingView(const Order &order)
     auto *station = new QLabel(order.stationName, view);
     station->setObjectName(QStringLiteral("sectionTitle"));
     lay->addWidget(station);
+
     auto *charger = new QLabel(
         QStringLiteral("%1 · %2kW").arg(order.chargerNo).arg(order.power, 0, 'f', 0), view);
     charger->setObjectName(QStringLiteral("hintLabel"));
     lay->addWidget(charger);
 
-    m_liveDuration = new QLabel(view);
-    m_liveDuration->setStyleSheet(QStringLiteral("font-size:20px; font-weight:bold; color:#1A1D26;"));
-    m_livePower = new QLabel(view);
-    m_livePower->setObjectName(QStringLiteral("valueLabel"));
-    m_liveEnergy = new QLabel(view);
-    m_liveEnergy->setObjectName(QStringLiteral("valueLabel"));
-    m_liveFee = new QLabel(view);
-    m_liveFee->setStyleSheet(QStringLiteral("color:#2F80FF; font-size:16px; font-weight:bold;"));
-    m_liveSoc = new QLabel(view);
-    m_liveSoc->setObjectName(QStringLiteral("hintLabel"));
-    lay->addWidget(m_liveDuration);
-    lay->addWidget(m_livePower);
-    lay->addWidget(m_liveEnergy);
-    lay->addWidget(m_liveFee);
-    lay->addWidget(m_liveSoc);
+    m_durationLabel = new QLabel(view);
+    m_durationLabel->setStyleSheet(QStringLiteral("font-size:22px; font-weight:bold; color:#1A1D26;"));
+    lay->addWidget(m_durationLabel);
+
+    m_powerLabel = new QLabel(view);
+    m_powerLabel->setObjectName(QStringLiteral("valueLabel"));
+    lay->addWidget(m_powerLabel);
+
+    m_energyLabel = new QLabel(view);
+    m_energyLabel->setObjectName(QStringLiteral("valueLabel"));
+    lay->addWidget(m_energyLabel);
+
+    m_feeLabel = new QLabel(view);
+    m_feeLabel->setStyleSheet(QStringLiteral("color:#2F80FF; font-size:15px; font-weight:bold;"));
+    lay->addWidget(m_feeLabel);
+
+    auto *socHint = new QLabel(QStringLiteral("电池荷电状态(模拟 SoC)"), view);
+    socHint->setObjectName(QStringLiteral("hintLabel"));
+    lay->addWidget(socHint);
+
+    m_socBar = new QProgressBar(view);
+    m_socBar->setRange(0, 100);
+    m_socBar->setValue(20);
+    m_socBar->setTextVisible(true);
+    lay->addWidget(m_socBar);
+
     lay->addStretch(1);
 
     auto *stopBtn = new QPushButton(QStringLiteral("结束充电"), view);
@@ -184,9 +188,6 @@ void ChargePage::buildChargingView(const Order &order)
 
     m_viewStack->addWidget(view);
     m_viewStack->setCurrentWidget(view);
-
-    onTick();  // 立即取一次后端实时
-    m_chargeTimer->start();
 }
 
 void ChargePage::onReserve()
@@ -197,13 +198,13 @@ void ChargePage::onReserve()
         return;
     }
     const double balance = UserService::instance().current().balance;
-    if (balance < 5.0) {
+    if (balance < kMinChargeAmount) {
         Toast::show(this, QStringLiteral("余额不足，请先充值"));
         return;
     }
+
     const int chargerId = item->data(Qt::UserRole).toInt();
-    const Order order =
-        ChargeService::instance().createReservation(m_stationId, chargerId);
+    const Order order = ChargeService::instance().createReservation(m_stationId, chargerId);
     if (order.status < 0) {
         Toast::show(this, ChargeService::instance().lastError());
         return;
@@ -218,11 +219,9 @@ void ChargePage::onStartCharge()
 {
     m_reserveTimer->stop();
     ChargeService::instance().startCharge(m_orderNo);
-    if (!ChargeService::instance().lastError().isEmpty()) {
-        Toast::show(this, ChargeService::instance().lastError());
-        return;
-    }
+    m_simSeconds = 0;
     buildChargingView(ChargeService::instance().orderDetail(m_orderNo));
+    m_chargeTimer->start();
 }
 
 void ChargePage::onCountdown()
@@ -235,39 +234,22 @@ void ChargePage::onCountdown()
         emit backRequested();
         return;
     }
-    m_countdownLabel->setText(QStringLiteral("预约保留 ")
-                              + Utils::formatDuration(m_reserveRemain));
+    m_countdownLabel->setText(QStringLiteral("预约保留 ") + Utils::formatDuration(m_reserveRemain));
 }
 
 void ChargePage::onTick()
 {
-    if (m_orderNo.isEmpty())
-        return;
-    const LiveStat ls = ChargeService::instance().live(m_orderNo);
-    if (!ls.ok) {
-        if (m_liveFee)
-            m_liveFee->setText(QStringLiteral("实时获取失败"));
-        return;
-    }
-    if (m_liveDuration)
-        m_liveDuration->setText(QStringLiteral("时长 ")
-                                + Utils::formatDuration(ls.elapsedSec));
-    if (m_livePower)
-        m_livePower->setText(QStringLiteral("实时功率 ") + QString::number(ls.power, 'f', 0)
-                             + QStringLiteral(" kW"));
-    if (m_liveEnergy)
-        m_liveEnergy->setText(QStringLiteral("累计电量 ") + QString::number(ls.energy, 'f', 2)
-                              + QStringLiteral(" 度"));
-    if (m_liveFee)
-        m_liveFee->setText(QStringLiteral("当前费用 ¥ ") + Utils::formatMoney(ls.amount));
-    if (m_liveSoc)
-        m_liveSoc->setText(QStringLiteral("SoC(标准电池估算) ") + QString::number(ls.soc)
-                           + QStringLiteral(" %"));
-    if (ls.backendStatus == 2) {  // 已结束(别处结算)
-        m_chargeTimer->stop();
-        if (m_liveFee)
-            m_liveFee->setText(QStringLiteral("充电已结束，可去订单中支付"));
-    }
+    m_simSeconds += kTimeScale;
+    const double energy = m_power * m_simSeconds / 3600.0;
+    const double fee = energy * m_unitPrice;
+
+    m_durationLabel->setText(QStringLiteral("时长 ") + Utils::formatDuration(m_simSeconds));
+    m_powerLabel->setText(QStringLiteral("实时功率 ") + QString::number(m_power, 'f', 0)
+                          + QStringLiteral(" kW"));
+    m_energyLabel->setText(QStringLiteral("累计电量 ") + QString::number(energy, 'f', 1)
+                           + QStringLiteral(" 度"));
+    m_feeLabel->setText(QStringLiteral("当前费用 ¥") + Utils::formatMoney(fee));
+    m_socBar->setValue(qMin(100, 20 + int(energy)));
 }
 
 void ChargePage::onStopCharge()
@@ -276,8 +258,12 @@ void ChargePage::onStopCharge()
                               QStringLiteral("确定结束本次充电吗？"),
                               QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
         return;
+
     m_chargeTimer->stop();
-    const Order after = ChargeService::instance().settle(m_orderNo, 0.0, 0.0, 0);
+    const double energy = m_power * m_simSeconds / 3600.0;
+    const double amount = energy * m_unitPrice;
+    const Order after =
+        ChargeService::instance().settle(m_orderNo, energy, amount, m_simSeconds);
     if (after.orderNo.isEmpty()) {
         Toast::show(this, ChargeService::instance().lastError());
         return;
