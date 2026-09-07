@@ -113,7 +113,7 @@ bool UserService::updateNickname(const QString &nickname, QString *err)
         if (err) *err = QStringLiteral("尚未登录");
         return false;
     }
-    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::post(
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::patch(
         QStringLiteral("/api/user/profile"),
         QJsonObject{{QStringLiteral("phone"), m_current.phone},
                     {QStringLiteral("nickname"), nickname}});

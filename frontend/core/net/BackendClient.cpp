@@ -38,6 +38,10 @@ BackendClient::Reply BackendClient::request(const QByteArray &verb,
     QNetworkReply *reply = nullptr;
     if (verb == "POST")
         reply = mgr.post(req, payload);
+    else if (verb == "PATCH")
+        reply = mgr.sendCustomRequest(req, "PATCH", payload);
+    else if (verb == "DELETE")
+        reply = mgr.deleteResource(req);
     else
         reply = mgr.get(req);
 
@@ -79,6 +83,17 @@ BackendClient::Reply BackendClient::post(const QString &path,
                                          const QJsonObject &body)
 {
     return request("POST", path, &body);
+}
+
+BackendClient::Reply BackendClient::patch(const QString &path,
+                                          const QJsonObject &body)
+{
+    return request("PATCH", path, &body);
+}
+
+BackendClient::Reply BackendClient::sendDelete(const QString &path)
+{
+    return request("DELETE", path, nullptr);
 }
 
 static bool sendAndRead(QNetworkReply *reply, QByteArray *outBytes,

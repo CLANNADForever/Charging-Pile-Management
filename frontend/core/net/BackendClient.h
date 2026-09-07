@@ -24,6 +24,8 @@ public:
 
     static Reply get(const QString &path);
     static Reply post(const QString &path, const QJsonObject &body);
+    static Reply patch(const QString &path, const QJsonObject &body);  // 后端 PATCH
+    static Reply sendDelete(const QString &path);                     // 后端 DELETE
 
     // 原始 body 上传(头像 PNG 等)；err 空=成功
     static bool postRaw(const QString &path, const QByteArray &body,
