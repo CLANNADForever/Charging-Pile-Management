@@ -7,7 +7,6 @@
 #include <QLineEdit>
 #include <QPixmap>
 #include <QPushButton>
-#include <QRandomGenerator>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -115,7 +114,6 @@ void LoginWindow::reset()
 {
     m_phoneEdit->clear();
     m_codeEdit->clear();
-    m_expectedCode.clear();
     m_remaining = 0;
     m_countdown->stop();
     m_getCodeBtn->setEnabled(true);
@@ -137,15 +135,16 @@ void LoginWindow::onGetCode()
         setHint(QStringLiteral("请输入正确的 11 位手机号"), true);
         return;
     }
-
-    // 生成 6 位随机码并直接显示(模拟短信下发)
-    m_expectedCode = QString::number(QRandomGenerator::global()->bounded(100000, 1000000));
-    setHint(QStringLiteral("验证码已发送(模拟):") + m_expectedCode, false);
-
-    m_remaining = 60;
-    m_getCodeBtn->setEnabled(false);
-    m_getCodeBtn->setText(QString::number(m_remaining) + QStringLiteral("s"));
-    m_countdown->start();
+    // 走后端 send-code，提示(含演示码)由后端返回
+    const QString hint = UserService::instance().requestCode(phone);
+    const bool ok = hint.contains(QStringLiteral("已发送"));
+    setHint(hint, !ok);
+    if (ok) {
+        m_remaining = 60;
+        m_getCodeBtn->setEnabled(false);
+        m_getCodeBtn->setText(QString::number(m_remaining) + QStringLiteral("s"));
+        m_countdown->start();
+    }
 }
 
 void LoginWindow::tickCountdown()
@@ -167,20 +166,11 @@ void LoginWindow::onLogin()
         setHint(QStringLiteral("请输入正确的 11 位手机号"), true);
         return;
     }
-    if (m_expectedCode.isEmpty()) {
-        setHint(QStringLiteral("请先获取验证码"), true);
+    const QString err =
+        UserService::instance().login(phone, m_codeEdit->text().trimmed());
+    if (!err.isEmpty()) {
+        setHint(err, true);
         return;
     }
-    if (m_codeEdit->text().trimmed() != m_expectedCode) {
-        setHint(QStringLiteral("验证码错误"), true);
-        return;
-    }
-
-    const User user = UserService::instance().loginOrRegister(phone);
-    if (user.frozen) {
-        setHint(QStringLiteral("账号已被冻结，请联系客服"), true);
-        return;
-    }
-
     emit loginSucceeded();
 }

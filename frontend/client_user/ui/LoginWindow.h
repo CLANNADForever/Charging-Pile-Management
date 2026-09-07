@@ -7,7 +7,7 @@ class QLineEdit;
 class QPushButton;
 class QTimer;
 
-// 用户登录窗口:手机号免密登录 / 自动注册 (UC-U-01)。
+// 用户登录窗口:手机号+验证码(走后端 send-code/login)。
 class LoginWindow : public QWidget
 {
     Q_OBJECT
@@ -35,5 +35,4 @@ private:
     QLabel *m_hintLabel = nullptr;
     QTimer *m_countdown = nullptr;
     int m_remaining = 0;
-    QString m_expectedCode;
 };

@@ -163,9 +163,8 @@ QList<Station> StationService::listStations() const
     if (r.ok) {
         for (const QJsonValue &v : feItems(r))
             out.append(feStation(v.toObject()));
-        return out;
     }
-    return m_stations;  // 离线回退本地
+    return out;  // 离线/失败返回空(不兜底假数据)
 }
 
 Station StationService::stationDetail(int id) const
@@ -190,26 +189,22 @@ QList<Charger> StationService::chargersByStation(int stationId) const
             result.append(feCharger(v.toObject()));
         return result;
     }
-    QList<Charger> fallback;
-    for (const Charger &c : m_chargers)
-        if (c.stationId == stationId)
-            fallback.append(c);
-    return fallback;
+    return QList<Charger>();  // 离线/失败返回空
 }
 
 Charger StationService::chargerById(int id) const
 {
+    QList<Charger> pool;
     if (feHasAdmin()) {
-        const QList<Charger> all = allChargers();
-        for (const Charger &c : all)
-            if (c.id == id)
-                return c;
-        return Charger();
+        pool = allChargers();
+    } else {
+        const QList<Station> stations = listStations();
+        for (const Station &s : stations)
+            pool.append(chargersByStation(s.id));
     }
-    for (const Charger &c : m_chargers) {
+    for (const Charger &c : pool)
         if (c.id == id)
             return c;
-    }
     return Charger();
 }
 
@@ -264,7 +259,7 @@ QList<Charger> StationService::allChargers() const
             return out;
         }
     }
-    return m_chargers;
+    return QList<Charger>();  // 未登录管理端/离线返回空
 }
 
 void StationService::addCharger(int stationId, const QString &code,

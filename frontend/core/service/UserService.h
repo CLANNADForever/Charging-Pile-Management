@@ -16,14 +16,17 @@ struct User
 };
 
 // 用户服务。
-// 阶段一:桩实现(内存假数据),用于前端页面开发;后续阶段接入数据库后替换内部实现,接口保持不变。
+// 登录走后端 send-code + login(用 UI 真实输入的验证码)，失败返回提示，绝不静默回退本地假登录。
 class UserService
 {
 public:
     static UserService &instance();
 
-    // 登录/自动注册:手机号不存在则自动注册(昵称 用户+后4位、余额 0)。
-    User loginOrRegister(const QString &phone);
+    // 获取验证码(后端演示码)；成功返回给 UI 展示的提示(含码)，失败返回错误提示。
+    QString requestCode(const QString &phone);
+
+    // 验证码登录/自动注册；成功写入 current 返回空串，失败返回面向用户的错误。
+    QString login(const QString &phone, const QString &code);
 
     // 校验手机号格式(11 位、以 1 开头)。
     static bool isValidPhone(const QString &phone);
@@ -36,12 +39,12 @@ public:
     const User &current() const { return m_current; }
 
     // —— 管理端操作(UC-A-07)——
-    QList<User> listUsers(const QString &keyword = QString()) const; // 手机号模糊
-    bool setUserStatus(const QString &phone, bool frozen);
+    QList<User> listUsers(const QString &keyword = QString()) const; // 手机号模糊(需已登录管理端)
+    bool setUserStatus(const QString &phone, bool frozen);           // 冻结/解冻(需已登录管理端)
 
 private:
     UserService();
 
     User m_current;
-    QList<User> m_users;
+    QList<User> m_users;  // 仅管理端离线时的内存缓存(在线读写走后端)
 };
