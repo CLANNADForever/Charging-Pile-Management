@@ -1,15 +1,27 @@
-# 新前端整合(片1：双端 Qt 原样接入，假数据可跑；目标名 ncs_user_new/ncs_admin_new，
-# 不与既有 src/client_user|admin 的 ncs_user/ncs_admin 冲突；后续片替换旧端后再改名归位)
+# 新前端整合：core 共享库 + C/B 端可执行(ncs_user / ncs_admin，归位名)。
+# 数据层走本仓库后端 REST；UI 仅按任务书接线。
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts Network)
 
-# ============ 新 C 端可执行程序 ncs_user_new ============
-add_executable(ncs_user_new
-    client_user/main.cpp
+# ===== core 共享库：Service(同步走后端) + BackendClient =====
+add_library(ncs_front_core STATIC
+    core/service/AdminService.cpp
+    core/service/ChargeService.cpp
+    core/service/PredictService.cpp
+    core/service/StationService.cpp
+    core/service/StatsService.cpp
+    core/service/UserService.cpp
+    core/net/BackendClient.cpp
+)
+target_include_directories(ncs_front_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(ncs_front_core PUBLIC Qt6::Core Qt6::Gui Qt6::Network)
 
+# ============ C 端可执行程序 ncs_user ============
+add_executable(ncs_user
+    client_user/main.cpp
     client_user/ui/MainWindow.h
     client_user/ui/MainWindow.cpp
     client_user/ui/NavButton.h
@@ -44,37 +56,20 @@ add_executable(ncs_user_new
     client_user/ui/ChargePage.cpp
     client_user/ui/MapPage.h
     client_user/ui/MapPage.cpp
-
     client_user/theme/Theme.h
     client_user/theme/Theme.cpp
-
     client_user/common/Toast.h
     client_user/common/Toast.cpp
     client_user/common/Utils.h
     client_user/common/Utils.cpp
-
     client_user/resources/resources.qrc
-
-    core/service/UserService.h
-    core/service/UserService.cpp
-    core/service/ChargeService.h
-    core/service/ChargeService.cpp
-    core/service/StationService.h
-    core/service/StationService.cpp
 )
+target_include_directories(ncs_user PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/client_user)
+target_link_libraries(ncs_user PRIVATE ncs_front_core Qt6::Widgets)
 
-target_include_directories(ncs_user_new PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/client_user
-)
-
-target_sources(ncs_user_new PRIVATE core/net/BackendClient.cpp)
-target_link_libraries(ncs_user_new PRIVATE Qt6::Widgets Qt6::Network)
-
-# ============ 新 B 端可执行程序 ncs_admin_new ============
-add_executable(ncs_admin_new
+# ============ B 端可执行程序 ncs_admin ============
+add_executable(ncs_admin
     client_admin/main.cpp
-
     client_admin/ui/AdminPage.h
     client_admin/ui/AdminLoginWindow.h
     client_admin/ui/AdminLoginWindow.cpp
@@ -92,35 +87,13 @@ add_executable(ncs_admin_new
     client_admin/ui/UserPage.cpp
     client_admin/ui/PredictPage.h
     client_admin/ui/PredictPage.cpp
-
     client_admin/theme/AdminTheme.h
     client_admin/theme/AdminTheme.cpp
-
     client_admin/common/Toast.h
     client_admin/common/Toast.cpp
     client_admin/common/Utils.h
     client_admin/common/Utils.cpp
-
     client_admin/resources/resources.qrc
-
-    core/service/AdminService.h
-    core/service/AdminService.cpp
-    core/service/StationService.h
-    core/service/StationService.cpp
-    core/service/StatsService.h
-    core/service/StatsService.cpp
-    core/service/UserService.h
-    core/service/UserService.cpp
-    core/service/ChargeService.h
-    core/service/ChargeService.cpp
-    core/service/PredictService.h
-    core/service/PredictService.cpp
 )
-
-target_include_directories(ncs_admin_new PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/client_admin
-)
-
-target_sources(ncs_admin_new PRIVATE core/net/BackendClient.cpp)
-target_link_libraries(ncs_admin_new PRIVATE Qt6::Widgets Qt6::Charts Qt6::Network)
+target_include_directories(ncs_admin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/client_admin)
+target_link_libraries(ncs_admin PRIVATE ncs_front_core Qt6::Widgets Qt6::Charts)
