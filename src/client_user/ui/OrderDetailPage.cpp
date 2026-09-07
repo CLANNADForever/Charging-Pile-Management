@@ -7,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include "common/Toast.h"
@@ -33,6 +34,13 @@ OrderDetailPage::OrderDetailPage(const QString &orderNo, QWidget *parent)
     m_statusLabel->setAlignment(Qt::AlignCenter);
     m_statusLabel->setStyleSheet(QStringLiteral("font-size:22px; font-weight:bold;"));
     body->addWidget(m_statusLabel);
+
+    m_liveLabel = new QLabel(this);
+    m_liveLabel->setObjectName(QStringLiteral("valueLabel"));
+    m_liveLabel->setAlignment(Qt::AlignCenter);
+    m_liveLabel->setWordWrap(true);
+    m_liveLabel->setVisible(false);
+    body->addWidget(m_liveLabel);
 
     // 详情卡片
     auto *card = new QFrame(this);
@@ -64,6 +72,10 @@ OrderDetailPage::OrderDetailPage(const QString &orderNo, QWidget *parent)
     body->addStretch(1);
     root->addLayout(body, 1);
 
+    m_timer = new QTimer(this);
+    m_timer->setInterval(1000);
+    connect(m_timer, &QTimer::timeout, this, &OrderDetailPage::onLiveTick);
+
     refreshOrder();
 }
 
@@ -80,6 +92,36 @@ void OrderDetailPage::refreshOrder()
         QStringLiteral("color:%1; font-size:22px; font-weight:bold;")
             .arg(color.name()));
     rebuildActions();
+    const bool charging = (m_order.status == 1);
+    m_liveLabel->setVisible(charging);
+    if (charging) {
+        onLiveTick();
+        m_timer->start();
+    } else {
+        m_timer->stop();
+    }
+}
+
+void OrderDetailPage::onLiveTick()
+{
+    if (m_order.status != 1)
+        return;
+    const LiveStat ls = ChargeService::instance().live(m_orderNo);
+    if (!ls.ok) {
+        m_liveLabel->setText(QStringLiteral("实时获取失败"));
+        return;
+    }
+    m_liveLabel->setText(
+        QStringLiteral("时长 %1 · 功率 %2 kW · 电量 %3 度 · 金额 ¥%4 · SoC(估) %5%")
+            .arg(Utils::formatDuration(ls.elapsedSec))
+            .arg(QString::number(ls.power, 'f', 0))
+            .arg(QString::number(ls.energy, 'f', 2))
+            .arg(Utils::formatMoney(ls.amount))
+            .arg(ls.soc));
+    if (ls.backendStatus == 2) {
+        m_timer->stop();
+        refreshOrder();
+    }
 }
 
 void OrderDetailPage::rebuildActions()

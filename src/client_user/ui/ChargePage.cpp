@@ -219,9 +219,12 @@ void ChargePage::onStartCharge()
 {
     m_reserveTimer->stop();
     ChargeService::instance().startCharge(m_orderNo);
-    m_simSeconds = 0;
-    buildChargingView(ChargeService::instance().orderDetail(m_orderNo));
-    m_chargeTimer->start();
+    if (!ChargeService::instance().lastError().isEmpty()) {
+        Toast::show(this, ChargeService::instance().lastError());
+        return;
+    }
+    // 充电会话统一收敛到“订单详情”数据页(该页会实时刷新)
+    emit openOrderDetail(m_orderNo);
 }
 
 void ChargePage::onCountdown()

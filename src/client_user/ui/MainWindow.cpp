@@ -99,6 +99,16 @@ MainWindow::MainWindow(QWidget *parent)
                 connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
                 pushPage(st);
             });
+            connect(charge, &ChargePage::openOrderDetail, this, [this](const QString &orderNo) {
+                popPage();  // 移除选桩页
+                auto *od = new OrderDetailPage(orderNo, this);
+                connect(od, &OrderDetailPage::settleRequested, this, [this](const QString &no) {
+                    auto *st = new OrderSettlePage(no, this);
+                    connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
+                    pushPage(st);
+                });
+                pushPage(od);
+            });
             pushPage(charge);
         });
         connect(detail, &StationDetailPage::navRequested, this, [this](int id) {

@@ -5,6 +5,7 @@
 
 class QLabel;
 class QPushButton;
+class QTimer;
 class QVBoxLayout;
 
 // 订单详情(按真实后端状态给动作：预约→开始/取消；充电中→结束(出账单)；待支付→去支付)。
@@ -25,9 +26,12 @@ private:
     void onCancel();
     void onSettle();
     void onPay();
+    void onLiveTick();
 
     QString m_orderNo;
     Order m_order;
     QLabel *m_statusLabel = nullptr;
+    QLabel *m_liveLabel = nullptr;
+    QTimer *m_timer = nullptr;
     QVBoxLayout *m_actions = nullptr;
 };

@@ -19,6 +19,7 @@ public:
 
 signals:
     void settleRequested(const QString &orderNo);
+    void openOrderDetail(const QString &orderNo);
 
 private slots:
     void onTick();       // 充电计费(每秒)
