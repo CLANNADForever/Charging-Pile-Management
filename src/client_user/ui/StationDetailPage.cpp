@@ -71,8 +71,10 @@ StationDetailPage::StationDetailPage(int stationId, QWidget *parent)
     table->setSelectionMode(QAbstractItemView::NoSelection);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-    const QStringList statusText = { QStringLiteral("空闲"), QStringLiteral("使用中"), QStringLiteral("故障") };
-    const QStringList statusColor = { QStringLiteral("#00B368"), QStringLiteral("#FF9500"), QStringLiteral("#EF4444") };
+    const QStringList statusText = { QStringLiteral("空闲"), QStringLiteral("使用中"),
+        QStringLiteral("故障"), QStringLiteral("预约中"), QStringLiteral("重启中") };
+    const QStringList statusColor = { QStringLiteral("#00B368"), QStringLiteral("#FF9500"),
+        QStringLiteral("#EF4444"), QStringLiteral("#7C5CFF"), QStringLiteral("#00A6CF") };
 
     for (int i = 0; i < chargers.size(); ++i) {
         const Charger &c = chargers.at(i);

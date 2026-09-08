@@ -116,6 +116,10 @@ ChargerPage::ChargerPage(QWidget *parent)
     connect(m_searchEdit, &QLineEdit::textChanged, this, [this](const QString &) { rebuildTable(); });
     connect(m_table, &QTableWidget::itemSelectionChanged, this, &ChargerPage::updateActionState);
 
+    m_autoRefresh = new QTimer(this);
+    m_autoRefresh->setInterval(1000);
+    connect(m_autoRefresh, &QTimer::timeout, this, &ChargerPage::onAutoPoll);
+
     rebuildTable();
 }
 
@@ -320,3 +324,19 @@ void ChargerPage::onDelete()
     rebuildTable();
     Toast::show(this, QStringLiteral("已删除"));
 }
+
+void ChargerPage::onAutoPoll()
+{
+    if (m_rebootId <= 0) {
+        m_autoRefresh->stop();
+        return;
+    }
+    const Charger cur = StationService::instance().chargerById(m_rebootId);
+    rebuildTable();
+    if (cur.status != 4) {
+        m_autoRefresh->stop();
+        m_rebootId = 0;
+        Toast::show(this, QStringLiteral("设备已恢复空闲"));
+    }
+}
+
