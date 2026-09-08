@@ -709,6 +709,22 @@ void BackendApp::registerRoutes() {
                    replyOk(res, userToJson(u));
                });
 
+    srv_.Get("/api/user/profile",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 const QString phone =
+                     QString::fromStdString(req.get_param_value("phone"));
+                 if (!ncs::is_valid_phone11(phone)) {
+                     replyBizErr(res, QStringLiteral("非法手机号"));
+                     return;
+                 }
+                 ncs::User u;
+                 if (!store_.findUserByPhone(phone, &u)) {
+                     replyBizErr(res, QStringLiteral("用户未注册"));
+                     return;
+                 }
+                 replyOk(res, userToJson(u));
+             });
+
     // 历史订单(已支付, 可翻页)
     srv_.Get("/api/orders/history",
              [this](const httplib::Request& req, httplib::Response& res) {
