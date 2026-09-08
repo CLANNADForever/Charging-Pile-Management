@@ -143,6 +143,7 @@ PredictPage::PredictPage(QWidget *parent)
     cc->addWidget(chartTitle);
     m_chart = new QChartView(chartCard);
     m_chart->setRenderHint(QPainter::Antialiasing);
+    m_chart->setBackgroundBrush(AdminTheme::Card);
     m_chart->setMinimumHeight(300);
     cc->addWidget(m_chart);
     lay->addWidget(chartCard, 3);

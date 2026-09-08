@@ -168,7 +168,7 @@ RevenuePage::RevenuePage(QWidget *parent)
     tc->addLayout(trendHeader);
     m_revenueChart = new QChartView(trendCard);
     m_revenueChart->setRenderHint(QPainter::Antialiasing);
-    m_revenueChart->setBackgroundBrush(Qt::NoBrush);
+    m_revenueChart->setBackgroundBrush(AdminTheme::Card);
     m_revenueChart->setMinimumHeight(260);
     tc->addWidget(m_revenueChart);
 
@@ -185,7 +185,7 @@ RevenuePage::RevenuePage(QWidget *parent)
     oc->addWidget(orderTitle);
     m_orderChart = new QChartView(orderCard);
     m_orderChart->setRenderHint(QPainter::Antialiasing);
-    m_orderChart->setBackgroundBrush(Qt::NoBrush);
+    m_orderChart->setBackgroundBrush(AdminTheme::Card);
     m_orderChart->setMinimumHeight(240);
     oc->addWidget(m_orderChart);
 

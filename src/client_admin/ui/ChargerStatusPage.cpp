@@ -83,7 +83,7 @@ ChargerStatusPage::ChargerStatusPage(QWidget *parent)
     pc->addWidget(pieTitle);
     m_pieChart = new QChartView(pieCard);
     m_pieChart->setRenderHint(QPainter::Antialiasing);
-    m_pieChart->setBackgroundBrush(Qt::NoBrush);
+    m_pieChart->setBackgroundBrush(AdminTheme::Card);
     m_pieChart->setMinimumHeight(260);
     pc->addWidget(m_pieChart);
     bottomRow->addWidget(pieCard, 3);
