@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 
 #include "Page.h"
@@ -47,6 +48,7 @@ private:
     qreal m_mapRatio = 0.58;
     QList<Station> m_allStations;
     QList<Station> m_filteredStations;
+    QHash<int, double> m_predictedFree;  // stationId -> 预测空闲率
     double m_userLat = 0.0;
     double m_userLon = 0.0;
     double m_maxDistanceKm = -1.0; // -1 不限

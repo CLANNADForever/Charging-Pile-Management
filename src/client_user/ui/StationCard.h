@@ -12,7 +12,7 @@ class StationCard : public QFrame
 public:
     StationCard(const Station &station, double distanceKm,
                 const QStringList &powerTypes, int freeCount, int totalCount,
-                QWidget *parent = nullptr);
+                QWidget *parent = nullptr, const QString &tag = QString());
 
 signals:
     void clicked(int stationId);

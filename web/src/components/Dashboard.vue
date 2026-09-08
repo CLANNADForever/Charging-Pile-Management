@@ -48,7 +48,7 @@
           <Panel title="快慢充占比">
             <DonutPie :data="powerTypeData" :center-label="powerTotal" center-sub="总电桩" />
           </Panel>
-          <Panel title="未来 24 小时负荷预测" unit="kW">
+          <Panel title="未来 24 小时逐时负荷预测" unit="kWh/h">
             <LoadForecast :data="loadForecast" />
           </Panel>
           <Panel title="设备健康度与预警">

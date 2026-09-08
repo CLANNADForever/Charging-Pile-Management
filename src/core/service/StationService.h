@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -47,6 +48,8 @@ public:
     static StationService &instance();
 
     QList<Station> listStations() const;
+    // 低拥堵推荐: stationId -> 预测空闲率[0,1]; 接口不可用时返回空表。
+    QHash<int, double> predictedFreeRatio() const;
     Station stationDetail(int id) const;
     QList<Charger> chargersByStation(int stationId) const;
     Charger chargerById(int id) const;

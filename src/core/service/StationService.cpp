@@ -167,6 +167,26 @@ QList<Station> StationService::listStations() const
     return out;  // 离线/失败返回空(不兜底假数据)
 }
 
+QHash<int, double> StationService::predictedFreeRatio() const
+{
+    QHash<int, double> out;
+    const ncsfe::BackendClient::Reply r = ncsfe::BackendClient::get(
+        QStringLiteral("/api/ml/congestion"));
+    if (!r.ok || !r.data.isObject())
+        return out;
+    const QJsonArray arr = r.data.toObject()
+                               .value(QStringLiteral("recommendations"))
+                               .toArray();
+    for (const QJsonValue &v : arr) {
+        const QJsonObject o = v.toObject();
+        const int id = o.value(QStringLiteral("station_id")).toInt();
+        const double ratio = o.value(QStringLiteral("predicted_free_ratio")).toDouble();
+        if (id > 0)
+            out.insert(id, ratio);
+    }
+    return out;
+}
+
 Station StationService::stationDetail(int id) const
 {
     const QList<Station> list = listStations();

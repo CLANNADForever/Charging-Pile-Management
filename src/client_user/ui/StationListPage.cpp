@@ -69,6 +69,7 @@ StationListPage::StationListPage(QWidget *parent)
     m_userLat = loc.latitude;
     m_userLon = loc.longitude;
     m_allStations = StationService::instance().listStations();
+    m_predictedFree = StationService::instance().predictedFreeRatio();
 
     m_rootLayout = new QVBoxLayout(this);
     m_rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -154,7 +155,8 @@ void StationListPage::buildListContent()
     filterRow->setSpacing(8);
 
     m_sortCombo = new QComboBox(m_listWidget);
-    m_sortCombo->addItems({ QStringLiteral("推荐排序"), QStringLiteral("距离优先"), QStringLiteral("价格优先") });
+    m_sortCombo->addItems({ QStringLiteral("推荐排序"), QStringLiteral("距离优先"),
+                            QStringLiteral("价格优先"), QStringLiteral("低拥堵优先") });
     connect(m_sortCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) { applyFilters(); });
 
@@ -263,9 +265,25 @@ void StationListPage::applyFilters()
         m_filteredStations.append(s);
     }
 
-    if (m_sortCombo->currentIndex() == 2) {
+    const int sortIdx = m_sortCombo->currentIndex();
+    if (sortIdx == 2) {
         std::sort(m_filteredStations.begin(), m_filteredStations.end(),
                   [](const Station &a, const Station &b) { return a.unitPrice < b.unitPrice; });
+    } else if (sortIdx == 3) {
+        const auto freeRatio = [this](const Station &s) {
+            return m_predictedFree.value(s.id, -1.0);
+        };
+        std::sort(m_filteredStations.begin(), m_filteredStations.end(),
+                  [this, &freeRatio](const Station &a, const Station &b) {
+                      const double ra = freeRatio(a);
+                      const double rb = freeRatio(b);
+                      if (ra != rb)
+                          return ra > rb;
+                      return StationService::haversineKm(
+                                 m_userLat, m_userLon, a.latitude, a.longitude)
+                             < StationService::haversineKm(
+                                 m_userLat, m_userLon, b.latitude, b.longitude);
+                  });
     } else {
         std::sort(m_filteredStations.begin(), m_filteredStations.end(),
                   [this](const Station &a, const Station &b) {
@@ -307,7 +325,15 @@ void StationListPage::rebuildList()
                 types.append(c.type);
         }
 
-        auto *card = new StationCard(s, d, types, freeCount, chargers.size(), m_listWidget);
+        QString tag;
+        if (m_sortCombo->currentIndex() == 3) {
+            const double ratio = m_predictedFree.value(s.id, -1.0);
+            if (ratio >= 0.0)
+                tag = QStringLiteral("低拥堵 · 预测空闲 %1%")
+                          .arg(qRound(ratio * 100.0));
+        }
+        auto *card = new StationCard(s, d, types, freeCount, chargers.size(),
+                                     m_listWidget, tag);
         connect(card, &StationCard::clicked, this, [this](int id) { emit openStation(id); });
         connect(card, &StationCard::navClicked, this, [this](int id) { emit openNavigation(id); });
         m_cardsLayout->addWidget(card);

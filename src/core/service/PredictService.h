@@ -21,8 +21,8 @@ struct LoadPrediction
 };
 
 // 预测服务(管理端)。
-// 阶段一:桩实现(确定性模拟数据),用于预测页开发;
-// 阶段六接入 ml/predict.py 与 load_prediction 表后替换内部实现,接口不变。
+// 当前:优先从后端 /api/ml/*(ml_data 离线产物)拉取,失败回退确定性模拟数据。
+// 后续接入实时特征/load_prediction 表后只需替换内部实现,接口不变。
 class PredictService
 {
 public:

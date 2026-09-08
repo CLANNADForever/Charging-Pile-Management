@@ -1,0 +1,92 @@
+[
+  {
+    "station_id": 1001,
+    "n_hours": 3463,
+    "service_corr": 6.82573403861805e-17,
+    "electric_corr": -3.3136734824915172e-15,
+    "low_price_kwh_avg": 6.579218404081239,
+    "high_price_kwh_avg": 6.579218404081239,
+    "gap_pct": 0.0
+  },
+  {
+    "station_id": 1153,
+    "n_hours": 3222,
+    "service_corr": -6.394054395872353e-17,
+    "electric_corr": -1.4532985758697515e-15,
+    "low_price_kwh_avg": 29.91276122491206,
+    "high_price_kwh_avg": 29.91276122491206,
+    "gap_pct": 0.0
+  },
+  {
+    "station_id": 1306,
+    "n_hours": 4103,
+    "service_corr": -2.644818008353748e-07,
+    "electric_corr": NaN,
+    "low_price_kwh_avg": 6.012754894792427,
+    "high_price_kwh_avg": 6.014441461231795,
+    "gap_pct": -0.028049811922791396
+  },
+  {
+    "station_id": 1459,
+    "n_hours": 4103,
+    "service_corr": 2.996700921989649e-15,
+    "electric_corr": -2.3367787961182824e-15,
+    "low_price_kwh_avg": 20.65082459988626,
+    "high_price_kwh_avg": 20.65082459988626,
+    "gap_pct": 0.0
+  },
+  {
+    "station_id": 1765,
+    "n_hours": 4264,
+    "service_corr": 1.6572214804367342e-06,
+    "electric_corr": -2.407106186811012e-17,
+    "low_price_kwh_avg": 3.932027829893683,
+    "high_price_kwh_avg": 3.935924534210114,
+    "gap_pct": -0.09910164640254947
+  },
+  {
+    "station_id": 2070,
+    "n_hours": 4344,
+    "service_corr": -2.234911538232586e-15,
+    "electric_corr": -3.588024835274345e-15,
+    "low_price_kwh_avg": 18.660086709637813,
+    "high_price_kwh_avg": 18.660086709637813,
+    "gap_pct": 0.0
+  },
+  {
+    "station_id": 2223,
+    "n_hours": 2026,
+    "service_corr": -0.08955579340179716,
+    "electric_corr": -2.8312725680244295e-15,
+    "low_price_kwh_avg": 113.63149243918474,
+    "high_price_kwh_avg": 103.98358585858585,
+    "gap_pct": 8.49052175017627
+  },
+  {
+    "station_id": 2376,
+    "n_hours": 3222,
+    "service_corr": 1.0676625750909431e-05,
+    "electric_corr": 0.00012943624422256377,
+    "low_price_kwh_avg": 11.881388371611834,
+    "high_price_kwh_avg": 11.908008320332813,
+    "gap_pct": -0.22404745883555363
+  },
+  {
+    "station_id": 2529,
+    "n_hours": 3222,
+    "service_corr": 1.8976391280870432e-05,
+    "electric_corr": 1.8976391280870432e-05,
+    "low_price_kwh_avg": 16.474912062900888,
+    "high_price_kwh_avg": 16.52759571369122,
+    "gap_pct": -0.31978107433403435
+  },
+  {
+    "station_id": 2682,
+    "n_hours": 222,
+    "service_corr": NaN,
+    "electric_corr": 1.2529530308266104e-16,
+    "low_price_kwh_avg": 3.8689320388349513,
+    "high_price_kwh_avg": 4.012012012012012,
+    "gap_pct": -3.6981774748399676
+  }
+]
