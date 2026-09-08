@@ -415,6 +415,32 @@ int main() {
             check(onF && onF->body.find("\"code\":0") != std::string::npos &&
                       onF->body.find("\"state\":2") != std::string::npos,
                   "admin: manual fault device2");
+            {  // 手工故障不受正常心跳(sim_state=0)自愈影响
+                const int fd = socket(AF_INET, SOCK_STREAM, 0);
+                bool okc = false;
+                if (fd >= 0) {
+                    sockaddr_in a{};
+                    a.sin_family = AF_INET;
+                    a.sin_port = htons(static_cast<uint16_t>(simPort2));
+                    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+                    okc = connect(fd, reinterpret_cast<sockaddr*>(&a), sizeof(a)) == 0;
+                }
+                if (okc) {
+                    sendLine(fd, "{\"type\":\"register\",\"devices\":[2]}\n");
+                    sendLine(fd, "{\"type\":\"heartbeat\",\"device_id\":2,\"sim_state\":0}\n");
+                    int st2 = -1;
+                    for (int k = 0; k < 8 && st2 != 2; ++k) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        auto q = getAuth("/api/admin/devices?q=2");
+                        if (q) { const auto j = nlohmann::json::parse(q->body);
+                                 if (!j["data"]["items"].empty())
+                                     st2 = j["data"]["items"][0]["state"].get<int>(); }
+                    }
+                    check(st2 == 2,
+                          "manual fault persists despite healthy heartbeat");
+                    close(fd);
+                }
+            }
             auto offF = postAuth("/api/admin/devices/2/fault", "{\"on\":false}");
             check(offF && offF->body.find("\"code\":0") != std::string::npos &&
                       offF->body.find("\"state\":0") != std::string::npos,

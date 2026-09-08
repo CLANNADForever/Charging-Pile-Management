@@ -25,6 +25,8 @@ QChart *buildPieChart(const ChargerStatusOverview &ov)
     series->append(QStringLiteral("空闲"), ov.idleCount)->setColor(AdminTheme::Green);
     series->append(QStringLiteral("使用中"), ov.usingCount)->setColor(AdminTheme::Amber);
     series->append(QStringLiteral("故障"), ov.faultCount)->setColor(AdminTheme::Red);
+    series->append(QStringLiteral("预约中"), ov.reservedCount)->setColor(QColor(0x7C, 0x5C, 0xFF));
+    series->append(QStringLiteral("重启中"), ov.rebootingCount)->setColor(QColor(0x00, 0xA6, 0xCF));
     series->setHoleSize(0.45); // 环形
     chart->addSeries(series);
 
@@ -81,6 +83,7 @@ ChargerStatusPage::ChargerStatusPage(QWidget *parent)
     pc->addWidget(pieTitle);
     m_pieChart = new QChartView(pieCard);
     m_pieChart->setRenderHint(QPainter::Antialiasing);
+    m_pieChart->setBackgroundBrush(Qt::NoBrush);
     m_pieChart->setMinimumHeight(260);
     pc->addWidget(m_pieChart);
     bottomRow->addWidget(pieCard, 3);

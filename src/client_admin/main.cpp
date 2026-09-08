@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
                 login->show();
             });
         }
-        win->show();
+        win->showMaximized();
         login->close();
     });
 

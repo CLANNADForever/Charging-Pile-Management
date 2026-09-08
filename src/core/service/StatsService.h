@@ -25,6 +25,8 @@ struct ChargerStatusOverview
     int usingCount = 0; // 使用中
     int idleCount = 0;  // 空闲
     int faultCount = 0; // 故障
+    int reservedCount = 0; // 预约
+    int rebootingCount = 0; // 重启中
     int total = 0;
     double health = 0.0; // 健康度 = (空闲+使用中)/总数 ×100%
 };

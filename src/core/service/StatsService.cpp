@@ -64,6 +64,8 @@ ChargerStatusOverview StatsService::chargerStatusOverview() const
     ov.idleCount = h.value(QStringLiteral("idle")).toInt();
     ov.usingCount = h.value(QStringLiteral("charging")).toInt();
     ov.faultCount = h.value(QStringLiteral("fault")).toInt();
+    ov.reservedCount = h.value(QStringLiteral("reserved")).toInt();
+    ov.rebootingCount = h.value(QStringLiteral("rebooting")).toInt();
     ov.total = d.value(QStringLiteral("devices_total")).toInt();
     if (ov.total > 0)
         ov.health = double(ov.idleCount + ov.usingCount) / double(ov.total) * 100.0;

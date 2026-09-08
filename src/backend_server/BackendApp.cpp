@@ -1256,6 +1256,13 @@ void BackendApp::registerRoutes() {
                                             : QStringLiteral("恢复桩 #%1 正常").arg(id),
                                          true);
                       store_.commitTx();
+                      {
+                          std::lock_guard<std::mutex> lk(manualMu_);
+                          if (on)
+                              manualFault_.insert(id);
+                          else
+                              manualFault_.erase(id);
+                      }
                       replyOk(res, json{{"state", newState}});
                   } else {
                       store_.rollbackTx();
@@ -1598,6 +1605,11 @@ bool BackendApp::requireAdmin(const httplib::Request& req,
 void BackendApp::applySimState(int deviceId, int simState) {
     if (simState < 0)
         return;
+    {
+        std::lock_guard<std::mutex> lk(manualMu_);
+        if (manualFault_.count(deviceId) > 0 && simState != 2)
+            return;  // 手工故障桩：正常心跳不自动恢复，须由管理员恢复或远程重启
+    }
     ncs::Device probe;
     if (!store_.getDeviceById(deviceId, &probe))  // 桩不存在/已删：忽略
         return;
@@ -1689,6 +1701,10 @@ bool BackendApp::adminRestartDevice(int deviceId, const QString& opBy,
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count();
+    }
+    {
+        std::lock_guard<std::mutex> lk(manualMu_);
+        manualFault_.erase(deviceId);
     }
     store_.appendAudit(opBy, QStringLiteral("device.restart"),
                        QStringLiteral("重启桩 #%1").arg(deviceId), true);

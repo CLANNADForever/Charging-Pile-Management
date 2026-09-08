@@ -19,6 +19,18 @@ QWidget {
     color: #E6ECF5;
 }
 
+/* ===== 对话框/消息框：深底保证文字可见 ===== */
+QDialog, QMessageBox, QInputDialog {
+    background: #0E1628;
+    color: #E6ECF5;
+}
+QDialog QLabel, QMessageBox QLabel, QInputDialog QLabel {
+    color: #E6ECF5;
+}
+QDialog QPushButton, QMessageBox QPushButton {
+    min-width: 84px;
+}
+
 QMainWindow, QWidget#appRoot {
     background: #0B1220;
 }

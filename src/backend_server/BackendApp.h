@@ -3,6 +3,8 @@
 
 #include <atomic>
 #include <map>
+#include <set>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -116,6 +118,8 @@ private:
     std::thread restartThread_;
     mutable std::mutex rebootingMu_;
     std::map<int, long long> rebootingSince_;  // deviceId -> 开始重启 epoch ms
+    std::set<int> manualFault_;                // 管理员手工标记故障的桩(心跳不得自愈)
+    mutable std::mutex manualMu_;
 };
 
 }  // namespace backend
