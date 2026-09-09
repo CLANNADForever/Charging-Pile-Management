@@ -21,12 +21,10 @@ QString feTier(double kw)
 }
 int feChargerStatus(int st)
 {
-    switch (st) {  // 0 空闲 1 使用 2 故障；后端 3 预约/4 重启按占用(1)
-        case 0: return 0;
-        case 1: return 1;
-        case 2: return 2;
-        default: return 1;
-    }
+    // 后端状态直通:0 空闲/1 使用/2 故障/3 预约/4 重启中(不再把 3/4 折叠成使用中)
+    if (st >= 0 && st <= 4)
+        return st;
+    return 1;  // 未知状态兜底按占用
 }
 Charger feCharger(const QJsonObject &o)
 {

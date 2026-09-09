@@ -264,6 +264,8 @@ void ChargerPage::onReboot()
         return;
     }
     rebuildTable();
+    m_rebootId = id;  // 重启中(4)期间 1s 轮询,离开重启态后自动刷新并停
+    m_autoRefresh->start();
     Toast::show(this, QStringLiteral("已下发远程重启,恢复后自动刷新"));
 }
 
