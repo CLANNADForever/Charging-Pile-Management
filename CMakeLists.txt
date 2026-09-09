@@ -7,8 +7,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Charts Network WebEngineWidgets WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Charts Network WebEngineWidgets WebChannel Multimedia MultimediaWidgets)
 
+add_subdirectory(third_party/zxing-cpp/core)
 add_subdirectory(src)
 
 enable_testing()

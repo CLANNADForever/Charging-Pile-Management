@@ -72,6 +72,7 @@ void ChargePage::buildSelectView()
     lay->addWidget(title);
 
     m_chargerList = new QListWidget(view);
+    m_chargerList->setObjectName(QStringLiteral("chargerList"));
     m_chargerList->setFrameShape(QFrame::NoFrame);
     m_chargerList->setSpacing(8);
     const QList<Charger> chargers = StationService::instance().chargersByStation(m_stationId);
@@ -79,11 +80,11 @@ void ChargePage::buildSelectView()
         if (c.status != 0)
             continue;
         auto *item = new QListWidgetItem(m_chargerList);
-        item->setText(QStringLiteral("%1   %2   %3kW")
+        item->setText(QStringLiteral("%1    %2 · %3kW")
                           .arg(c.code, c.type)
                           .arg(c.power, 0, 'f', 0));
         item->setData(Qt::UserRole, c.id);
-        item->setSizeHint(QSize(0, 44));
+        item->setSizeHint(QSize(0, 52));
         m_chargerList->addItem(item);
     }
     lay->addWidget(m_chargerList, 1);

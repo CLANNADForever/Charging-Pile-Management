@@ -1,10 +1,13 @@
 #include "MainWindow.h"
 
 #include <QHBoxLayout>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
+#include <QPushButton>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
-#include "ChargeEntryPage.h"
 #include "ChargePage.h"
 #include "CouponPage.h"
 #include "MapPage.h"
@@ -18,6 +21,32 @@
 #include "UserCenterPage.h"
 #include "common/Toast.h"
 #include "theme/Theme.h"
+
+namespace {
+// 生成二维码图标(三个定位角 + 点阵)
+QIcon makeQrIcon()
+{
+    QPixmap pm(48, 48);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0x2A, 0x32, 0x40));
+    p.drawRect(2, 2, 14, 14);
+    p.drawRect(32, 2, 14, 14);
+    p.drawRect(2, 32, 14, 14);
+    p.setBrush(Qt::white);
+    p.drawRect(6, 6, 6, 6);
+    p.drawRect(36, 6, 6, 6);
+    p.drawRect(6, 36, 6, 6);
+    p.setBrush(QColor(0x2A, 0x32, 0x40));
+    for (int r = 0; r < 5; ++r)
+        for (int c = 0; c < 5; ++c)
+            if ((r * 7 + c * 3) % 2 == 0)
+                p.drawRect(20 + c * 4, 20 + r * 4, 2, 2);
+    return QIcon(pm);
+}
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent)
@@ -36,8 +65,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_stationList = new StationListPage(this);
     m_stack->addWidget(m_stationList);
-    m_chargeEntry = new ChargeEntryPage(this);
-    m_stack->addWidget(m_chargeEntry);
     m_userCenter = new UserCenterPage(this);
     m_stack->addWidget(m_userCenter);
 
@@ -49,23 +76,31 @@ MainWindow::MainWindow(QWidget *parent)
     nav->setContentsMargins(0, 0, 0, 0);
     nav->setSpacing(0);
 
-    struct NavItem
-    {
-        NavButton::Icon icon;
-        QString label;
-    };
-    const NavItem items[] = {
-        { NavButton::Home,    QStringLiteral("首页") },
-        { NavButton::Charge,  QStringLiteral("充电") },
-        { NavButton::Profile, QStringLiteral("我的") },
-    };
-    for (int i = 0; i < 3; ++i) {
-        auto *btn = new NavButton(items[i].icon, items[i].label, navBar);
-        connect(btn, &NavButton::clicked, this, [this, i]() { switchTab(i); });
-        nav->addWidget(btn, 1);
-        m_navs.append(btn);
-    }
+    auto *homeBtn = new NavButton(NavButton::Home, QStringLiteral("首页"), navBar);
+    connect(homeBtn, &NavButton::clicked, this, [this]() { switchTab(0); });
+    nav->addWidget(homeBtn, 1);
+    m_navs.append(homeBtn);
+
+    nav->addSpacing(120);  // 中间给凸起扫码按钮留位
+
+    auto *profileBtn = new NavButton(NavButton::Profile, QStringLiteral("我的"), navBar);
+    connect(profileBtn, &NavButton::clicked, this, [this]() { switchTab(1); });
+    nav->addWidget(profileBtn, 1);
+    m_navs.append(profileBtn);
     root->addWidget(navBar, 0);
+
+    // 中间凸起「扫码充电」圆形按钮:半嵌入底部导航,与底栏平滑过渡
+    auto *scanBtn = new QPushButton(this);
+    scanBtn->setObjectName(QStringLiteral("scanChargeButton"));
+    scanBtn->setIcon(QIcon(makeQrIcon()));
+    scanBtn->setIconSize(QSize(34, 34));
+    scanBtn->setFixedSize(68, 68);
+    scanBtn->setCursor(Qt::PointingHandCursor);
+    connect(scanBtn, &QPushButton::clicked, this, [this]() {
+        Toast::show(this, QStringLiteral("扫码功能暂未开放"));
+    });
+    scanBtn->move((420 - scanBtn->width()) / 2, 760 - 64 - 14);
+    scanBtn->raise();
 
     // 用户中心信号接线
     connect(m_userCenter, &UserCenterPage::logoutRequested,
@@ -134,27 +169,6 @@ MainWindow::MainWindow(QWidget *parent)
         pushPage(new MapPage(id, this));
     });
 
-    // 充电入口(底部「充电」tab)：去支付 / 去订单管理 / 去首页
-    connect(m_chargeEntry, &ChargeEntryPage::openOrders, this, [this]() {
-        auto *list = new OrderListPage(this);
-        connect(list, &OrderListPage::orderClicked, this, [this](const QString &orderNo) {
-            auto *detail = new OrderDetailPage(orderNo, this);
-            connect(detail, &OrderDetailPage::settleRequested, this, [this](const QString &no) {
-                auto *st = new OrderSettlePage(no, this);
-                connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
-                pushPage(st);
-            });
-            pushPage(detail);
-        });
-        pushPage(list);
-    });
-    connect(m_chargeEntry, &ChargeEntryPage::settleRequested, this, [this](const QString &orderNo) {
-        auto *st = new OrderSettlePage(orderNo, this);
-        connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
-        pushPage(st);
-    });
-    connect(m_chargeEntry, &ChargeEntryPage::goHome, this, [this]() { switchTab(0); });
-
     switchTab(0);
 }
 
@@ -180,8 +194,6 @@ void MainWindow::switchTab(int index)
     if (index == 0)
         m_stationList->refresh();
     if (index == 1)
-        m_chargeEntry->refresh();
-    if (index == 2)
         m_userCenter->refresh();
 }
 

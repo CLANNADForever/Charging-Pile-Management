@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <regex>
 #include <vector>
 
 #include <QString>
@@ -58,6 +59,19 @@ bool sendLine(int fd, const char* line) {
     const ssize_t n = send(fd, line, std::char_traits<char>::length(line), MSG_NOSIGNAL);
     return n >= 0;
 }
+// 从 send-code 响应里提取 6 位随机验证码
+std::string extractCode(const std::string& body) {
+    try {
+        auto j = nlohmann::json::parse(body);
+        const std::string msg = j.value("message", "");
+        std::smatch m;
+        static const std::regex re("(\\d{6})\\s*$");
+        if (std::regex_search(msg, m, re))
+            return m[1].str();
+    } catch (...) {}
+    return "";
+}
+
 }  // namespace
 
 int main() {
@@ -137,8 +151,12 @@ int main() {
                   health->body.find("\"service\":\"ncs-backend\"") != std::string::npos,
               "GET /health -> ok");
 
+        auto sc1 = cli.Post("/api/auth/send-code",
+                            "{\"phone\":\"13800138000\"}",
+                            "application/json");
+        const std::string code1 = extractCode(sc1 ? sc1->body : "");
         auto loginGood = cli.Post("/api/auth/login",
-                                  "{\"phone\":\"13800138000\",\"code\":\"123456\"}",
+                                  "{\"phone\":\"13800138000\",\"code\":\"" + code1 + "\"}",
                                   "application/json");
         check(loginGood && loginGood->body.find("\"code\":0") != std::string::npos &&
                   loginGood->body.find("\"balance_cents\":0") != std::string::npos,
@@ -576,11 +594,12 @@ int main() {
                 check(mdev > 0, "R6: device under min-charge station");
                 if (mdev > 0) {
                     const std::string lowPhone = "13900009990";
-                    cli.Post("/api/auth/send-code",
+                    auto sc2 = cli.Post("/api/auth/send-code",
                              "{\"phone\":\"" + lowPhone + "\"}",
                              "application/json");
+                    const std::string code2 = extractCode(sc2 ? sc2->body : "");
                     cli.Post("/api/auth/login",
-                             "{\"phone\":\"" + lowPhone + "\",\"code\":\"123456\"}",
+                             "{\"phone\":\"" + lowPhone + "\",\"code\":\"" + code2 + "\"}",
                              "application/json");
                     auto lo = cli.Post("/api/orders",
                                        "{\"phone\":\"" + lowPhone + "\",\"device_id\":" +

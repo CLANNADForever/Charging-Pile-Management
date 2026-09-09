@@ -104,6 +104,7 @@ StationListPage::StationListPage(QWidget *parent)
 
     // 3 列表
     m_listWidget = new QWidget(this);
+    m_listWidget->setObjectName(QStringLiteral("listPanel"));
     m_listWidget->setMinimumHeight(0);
     m_listWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
     m_rootLayout->addWidget(m_listWidget, 0);
@@ -118,7 +119,7 @@ QWidget *StationListPage::buildSearchBar()
     auto *bar = new QWidget(this);
     bar->setObjectName(QStringLiteral("searchBar"));
     auto *lay = new QVBoxLayout(bar);
-    lay->setContentsMargins(16, 10, 16, 8);
+    lay->setContentsMargins(20, 12, 20, 10);
     lay->setSpacing(6);
 
     auto *loc = new QLabel(QStringLiteral("当前位置 · ")

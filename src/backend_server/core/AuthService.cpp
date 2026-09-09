@@ -1,5 +1,7 @@
 #include "AuthService.h"
 
+#include <QRandomGenerator>
+
 #include "database/Store.h"
 #include "phone.h"
 
@@ -12,8 +14,12 @@ AuthReply AuthService::sendCode(const QString& phone) const {
         r.message = QStringLiteral("请输入 11 位手机号");
         return r;
     }
+    // 随机 6 位验证码，按手机号缓存
+    const QString code =
+        QString::number(QRandomGenerator::global()->bounded(100000, 1000000));
+    codes_.insert(phone, code);
     r.ok = true;
-    r.message = QStringLiteral("验证码已发送（模拟）：") + ncs::demo_sms_code();
+    r.message = QStringLiteral("验证码已发送（模拟）：") + code;
     return r;
 }
 
@@ -23,7 +29,7 @@ AuthReply AuthService::login(const QString& phone, const QString& code) {
         r.message = QStringLiteral("请输入 11 位手机号");
         return r;
     }
-    if (code != ncs::demo_sms_code()) {
+    if (code.isEmpty() || code != codes_.value(phone)) {
         r.message = QStringLiteral("验证码错误");
         return r;
     }

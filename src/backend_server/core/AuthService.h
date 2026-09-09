@@ -1,6 +1,7 @@
 #ifndef NCS_BACKEND_CORE_AUTHSERVICE_H
 #define NCS_BACKEND_CORE_AUTHSERVICE_H
 
+#include <QHash>
 #include <QString>
 
 #include "entities.h"
@@ -29,6 +30,8 @@ public:
 
 private:
     Store* store_;
+    // 演示验证码(按手机号缓存，随机生成)
+    mutable QHash<QString, QString> codes_;
 };
 
 }  // namespace backend

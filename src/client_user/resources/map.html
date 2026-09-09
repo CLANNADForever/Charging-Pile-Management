@@ -32,17 +32,16 @@
 
   function initMap() {
     map = new TMap.Map(document.getElementById('map'), {
-      center: new TMap.LatLng(39.9042, 116.4074),
-      zoom: 11,
+      center: new TMap.LatLng(30.2741, 120.1551),
+      zoom: 12,
       viewMode: '2D'
     });
   }
 
   function setUserLocation(lat, lng) {
     userLat = lat; userLng = lng;
-    if (userMarker) { userMarker.setMap(null); userMarker = null; }
     if (!map) return;
-    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;  // 未知定位:不画标记
+    if (userMarker) userMarker.setMap(null);
     userMarker = new TMap.MultiMarker({
       map: map,
       styles: { user: new TMap.MarkerStyle({ width: 20, height: 20, anchor: { x: 10, y: 10 }, src: USER_ICON }) },
@@ -67,14 +66,6 @@
       var id = String(evt.geometry.id).replace('st', '');
       if (bridge) bridge.onStationClicked(parseInt(id, 10));
     });
-    // 视野对齐到电站集合:>=2 点整合适配、单点居中(不依赖写死的初始中心)
-    if (geos.length >= 2) {
-      var pts = geos.map(function(g) { return g.position; });
-      map.fitBounds(new TMap.LatLngBounds(pts), { padding: 80 });
-    } else if (geos.length === 1) {
-      map.setCenter(geos[0].position);
-      map.setZoom(15);
-    }
   }
 
   function focusStation(lat, lng) {
@@ -121,7 +112,20 @@
       styles: { route: new TMap.PolylineStyle({ color: '#F59E0B', width: 4, borderWidth: 1, borderColor: '#ffffff' }) },
       geometries: [{ id: 'route', styleId: 'route', paths: latLngs }]
     });
-    map.fitBounds(new TMap.LatLngBounds(latLngs), { padding: 60 });
+    fitLatLngs(latLngs);
+  }
+
+  // 根据 LatLng 数组算对角点并 fitBounds(修正 LatLngBounds 构造参数错误)
+  function fitLatLngs(latLngs) {
+    var minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    latLngs.forEach(function(p) {
+      minLat = Math.min(minLat, p.lat);
+      maxLat = Math.max(maxLat, p.lat);
+      minLng = Math.min(minLng, p.lng);
+      maxLng = Math.max(maxLng, p.lng);
+    });
+    var bounds = new TMap.LatLngBounds(new TMap.LatLng(minLat, minLng), new TMap.LatLng(maxLat, maxLng));
+    map.fitBounds(bounds, { padding: 60 });
   }
 
   window.__onRoute = function(resp) {
@@ -139,7 +143,7 @@
       styles: { route: new TMap.PolylineStyle({ color: '#4D9FFF', width: 6, borderWidth: 2, borderColor: '#ffffff' }) },
       geometries: [{ id: 'route', styleId: 'route', paths: latLngs }]
     });
-    map.fitBounds(new TMap.LatLngBounds(latLngs), { padding: 60 });
+    fitLatLngs(latLngs);
   };
 
   function drawRoute(fromLat, fromLng, toLat, toLng, mode) {

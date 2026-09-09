@@ -25,15 +25,24 @@ QWidget#loginRoot {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E3EFFB, stop:0.5 #F2F6FB, stop:1 #F8FAFC);
 }
 
-/* 底部导航栏(柔和浮起) */
+/* 底部导航栏(柔和浮起 + 极淡蓝绿渐变呼应扫码按钮) */
 QWidget#navBar {
-    background: #FFFFFF;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #EDF4FD, stop:0.5 #ECF7F3, stop:1 #EAF6EE);
     border-top: 1px solid #EEF1F6;
 }
 NavButton {
     background: transparent;
     border: none;
 }
+
+/* 底部导航中间「扫码充电」按钮(凸起感:白描边 + 渐变) */
+QPushButton#scanChargeButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5EA8FF, stop:0.55 #3EC9C0, stop:1 #45D094);
+    color: #FFFFFF;
+    border: 3px solid #FFFFFF;
+    border-radius: 34px;
+}
+QPushButton#scanChargeButton:pressed { background: #4C93E8; }
 
 /* 卡片 (暖白 + 大圆角 + 极淡描边) */
 QFrame#card {
@@ -119,6 +128,7 @@ QPushButton#primaryButton {
     font-size: 15px;
     font-weight: bold;
 }
+QPushButton#primaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6FB4FF, stop:0.55 #4FD4CC, stop:1 #54DCA2); }
 QPushButton#primaryButton:pressed { background: #4C93E8; }
 QPushButton#primaryButton:disabled { background: #C7D8EE; }
 
@@ -131,6 +141,8 @@ QPushButton#ghostButton {
     padding: 11px 0;
     font-size: 13px;
 }
+QPushButton#ghostButton:hover { background: #F0F6FF; }
+QPushButton#ghostButton:pressed { background: #E4EFFB; }
 QPushButton#ghostButton:disabled {
     color: #C0D2EC;
     border-color: #DDE8F6;
@@ -143,6 +155,8 @@ QPushButton#textButton {
     border: none;
     font-size: 14px;
 }
+QPushButton#textButton:hover { color: #3E8FEA; }
+QPushButton#textButton:pressed { color: #2F7AD6; }
 
 /* 危险文字按钮 */
 QPushButton#dangerTextButton {
@@ -169,7 +183,8 @@ QPushButton#entryButton {
     font-size: 15px;
     color: #2A3240;
 }
-QPushButton#entryButton:pressed { background: #F2F6FB; }
+QPushButton#entryButton:hover { background: #F6F9FD; }
+QPushButton#entryButton:pressed { background: #EEF3FA; }
 
 /* 分类 tab */
 QPushButton#tabButton {
@@ -180,6 +195,7 @@ QPushButton#tabButton {
     padding: 8px 0;
     font-size: 13px;
 }
+QPushButton#tabButton:hover { border: 1px solid #BBD7FF; }
 QPushButton#tabButton:checked {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5EA8FF, stop:0.55 #3EC9C0, stop:1 #45D094);
     color: #FFFFFF;
@@ -191,6 +207,20 @@ QPushButton#tabButton:checked {
 QWidget#searchBar {
     background: #FFFFFF;
 }
+
+/* 扫码预览框 */
+QVideoWidget#scanPreview {
+    background: #0B1220;
+    border: 1px solid #EEF1F6;
+    border-radius: 16px;
+}
+
+/* 主页列表面板:白色抽屉,顶部圆角 */
+QWidget#listPanel {
+    background: #FFFFFF;
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+}
 QPushButton#searchButton {
     background: #FFFFFF;
     border: 1px solid #E6EBF2;
@@ -200,6 +230,8 @@ QPushButton#searchButton {
     color: #98A1B0;
     font-size: 14px;
 }
+QPushButton#searchButton:hover { border-color: #BBD7FF; }
+QPushButton#searchButton:pressed { background: #F0F6FF; }
 
 /* 优惠横幅 */
 QPushButton#couponBanner {
@@ -223,6 +255,8 @@ QPushButton#filterButton {
     font-size: 13px;
     color: #2A3240;
 }
+QPushButton#filterButton:hover { border-color: #BBD7FF; background: #FAFCFF; }
+QPushButton#filterButton:pressed { background: #EDF3FC; }
 QPushButton#locateButton {
     background: #F0F6FF;
     border: 1px solid #DCE8F7;
@@ -287,6 +321,47 @@ QScrollArea > QWidget > QWidget {
     background: transparent;
 }
 
+/* 滑动条:细 + 圆角 + 半透明,去掉默认方方正正的粗条 */
+QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: rgba(150, 162, 178, 0.55);
+    border-radius: 3px;
+    min-height: 30px;
+}
+QScrollBar::handle:vertical:hover {
+    background: rgba(120, 134, 152, 0.75);
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+    background: transparent;
+    border: none;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 6px;
+    margin: 0;
+}
+QScrollBar::handle:horizontal {
+    background: rgba(150, 162, 178, 0.55);
+    border-radius: 3px;
+    min-width: 30px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+    background: transparent;
+    border: none;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
 /* 列表 */
 QListWidget {
     background: transparent;
@@ -294,6 +369,25 @@ QListWidget {
 }
 QListWidget::item {
     background: transparent;
+}
+
+/* 选桩充电页的电桩卡片列表 */
+QListWidget#chargerList::item {
+    background: #FDFEFF;
+    border: 1px solid #EEF1F6;
+    border-radius: 14px;
+    padding: 10px 16px;
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    color: #2A3240;
+}
+QListWidget#chargerList::item:hover {
+    border: 1px solid #BBD7FF;
+}
+QListWidget#chargerList::item:selected {
+    background: #EAF3FF;
+    border: 1px solid #5EA8FF;
+    color: #2A3240;
 }
 
 /* 表格 */

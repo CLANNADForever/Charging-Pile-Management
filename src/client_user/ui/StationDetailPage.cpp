@@ -4,8 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QTableWidget>
-#include <QHeaderView>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
 #include "common/Utils.h"
@@ -63,34 +62,57 @@ StationDetailPage::StationDetailPage(int stationId, QWidget *parent)
     body->addWidget(tableTitle);
 
     const QList<Charger> chargers = StationService::instance().chargersByStation(m_station.id);
-    auto *table = new QTableWidget(chargers.size(), 5, this);
-    table->setHorizontalHeaderLabels({ QStringLiteral("编号"), QStringLiteral("类型"),
-        QStringLiteral("功率"), QStringLiteral("状态"), QStringLiteral("累计次数") });
-    table->verticalHeader()->setVisible(false);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setSelectionMode(QAbstractItemView::NoSelection);
-    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-
     const QStringList statusText = { QStringLiteral("空闲"), QStringLiteral("使用中"),
         QStringLiteral("故障"), QStringLiteral("预约中"), QStringLiteral("重启中") };
     const QStringList statusColor = { QStringLiteral("#00B368"), QStringLiteral("#FF9500"),
         QStringLiteral("#EF4444"), QStringLiteral("#7C5CFF"), QStringLiteral("#00A6CF") };
 
-    for (int i = 0; i < chargers.size(); ++i) {
-        const Charger &c = chargers.at(i);
-        auto *cell0 = new QTableWidgetItem(c.code);
-        auto *cell1 = new QTableWidgetItem(c.type);
-        auto *cell2 = new QTableWidgetItem(QStringLiteral("%1kW").arg(c.power, 0, 'f', 0));
-        auto *cell3 = new QTableWidgetItem(statusText.value(c.status, QStringLiteral("未知")));
-        cell3->setForeground(QColor(statusColor.value(c.status, QStringLiteral("#8A8F99"))));
-        auto *cell4 = new QTableWidgetItem(QString::number(c.totalCount));
-        table->setItem(i, 0, cell0);
-        table->setItem(i, 1, cell1);
-        table->setItem(i, 2, cell2);
-        table->setItem(i, 3, cell3);
-        table->setItem(i, 4, cell4);
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    auto *chargerContainer = new QWidget(scrollArea);
+    auto *chargerLay = new QVBoxLayout(chargerContainer);
+    chargerLay->setContentsMargins(0, 0, 0, 0);
+    chargerLay->setSpacing(10);
+    scrollArea->setWidget(chargerContainer);
+
+    for (const Charger &c : chargers) {
+        auto *row = new QFrame(chargerContainer);
+        row->setObjectName(QStringLiteral("card"));
+        row->setFixedHeight(66);
+        auto *rowLay = new QVBoxLayout(row);
+        rowLay->setContentsMargins(14, 12, 14, 12);
+        rowLay->setSpacing(6);
+
+        auto *top = new QHBoxLayout;
+        top->setSpacing(8);
+        auto *dot = new QLabel(row);
+        dot->setFixedSize(10, 10);
+        dot->setStyleSheet(QStringLiteral("background:%1; border-radius:5px;")
+                               .arg(statusColor.value(c.status, QStringLiteral("#8A8F99"))));
+        auto *codeLabel = new QLabel(c.code, row);
+        codeLabel->setObjectName(QStringLiteral("sectionTitle"));
+        auto *statusLabel = new QLabel(statusText.value(c.status, QStringLiteral("未知")), row);
+        statusLabel->setStyleSheet(QStringLiteral("color:%1; font-weight:bold;")
+                                       .arg(statusColor.value(c.status, QStringLiteral("#8A8F99"))));
+        top->addWidget(dot);
+        top->addWidget(codeLabel);
+        top->addStretch(1);
+        top->addWidget(statusLabel);
+        rowLay->addLayout(top);
+
+        auto *meta = new QLabel(QStringLiteral("%1 · %2kW · 累计%3次")
+                                    .arg(c.type)
+                                    .arg(c.power, 0, 'f', 0)
+                                    .arg(c.totalCount), row);
+        meta->setObjectName(QStringLiteral("hintLabel"));
+        rowLay->addWidget(meta);
+
+        chargerLay->addWidget(row);
     }
-    body->addWidget(table, 1);
+    chargerLay->addStretch();
+
+    body->addWidget(scrollArea, 1);
 
     // 底栏:最低价 + 选桩充电
     auto *bottom = new QHBoxLayout;
