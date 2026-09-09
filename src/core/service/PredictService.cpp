@@ -57,9 +57,9 @@ QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId) const
 {
     Q_UNUSED(stationId); // 桩:暂不按电站区分曲线
 
-    // 优先真实离线模型产物(24h 逐时回测)。
+    // 优先真实离线模型产物(按 1/6/24h 回测窗口)。
     const auto r = ncsfe::BackendClient::get(
-        QStringLiteral("/api/ml/load-forecast"));
+        QStringLiteral("/api/ml/load-forecast?horizon=%1").arg(horizon));
     QList<LoadPoint> real;
     if (parseForecastReply(r, &real, nullptr, nullptr, nullptr))
         return real;
@@ -91,16 +91,16 @@ QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId) const
 
 QList<LoadPrediction> PredictService::predictionList(int horizon) const
 {
-    // 从真实产物生成汇总行: 24h 总电量 + 平均空闲桩 + 是否含高峰。
+    // 从真实产物生成汇总行: 该时域第一窗口电量 + 平均空闲桩 + 是否含高峰。
     const auto loadR = ncsfe::BackendClient::get(
-        QStringLiteral("/api/ml/load-forecast"));
+        QStringLiteral("/api/ml/load-forecast?horizon=%1").arg(horizon));
     QList<LoadPoint> pts;
     QString stationName;
     double energy = 0.0;
     bool anyPeak = false;
     if (parseForecastReply(loadR, &pts, &stationName, &energy, &anyPeak)) {
         const auto occR = ncsfe::BackendClient::get(
-            QStringLiteral("/api/ml/occupancy"));
+            QStringLiteral("/api/ml/occupancy?horizon=%1").arg(horizon));
         double idleAvg = 0.0;
         int n = 0;
         if (occR.ok && occR.data.isObject()) {
@@ -121,7 +121,7 @@ QList<LoadPrediction> PredictService::predictionList(int horizon) const
         p.stationName = stationName.isEmpty()
                             ? QStringLiteral("演示站(UrbanEV 离线模型)")
                             : stationName + QStringLiteral("(离线模型)");
-        p.predictedEnergy = energy;
+        p.predictedEnergy = pts.isEmpty() ? energy : pts.first().predicted;
         p.predictedIdle = qMax(0, qRound(idleAvg));
         p.isPeak = anyPeak;
         return { p };

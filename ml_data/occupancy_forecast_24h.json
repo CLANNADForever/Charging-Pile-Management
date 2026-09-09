@@ -1,0 +1,152 @@
+{
+  "station_id": "1459",
+  "charge_count": 6,
+  "generated_at": "2026-09-09T15:57:44",
+  "horizon_h": 24,
+  "points": [
+    {
+      "time": "2022-12-24 15:00",
+      "busy_actual": 2.64,
+      "busy_pred": 3.39,
+      "free_pred": 2.61
+    },
+    {
+      "time": "2022-12-24 16:00",
+      "busy_actual": 2.66,
+      "busy_pred": 3.32,
+      "free_pred": 2.68
+    },
+    {
+      "time": "2022-12-24 17:00",
+      "busy_actual": 2.67,
+      "busy_pred": 3.18,
+      "free_pred": 2.82
+    },
+    {
+      "time": "2022-12-24 18:00",
+      "busy_actual": 2.63,
+      "busy_pred": 3.9,
+      "free_pred": 2.1
+    },
+    {
+      "time": "2022-12-24 19:00",
+      "busy_actual": 2.56,
+      "busy_pred": 3.98,
+      "free_pred": 2.02
+    },
+    {
+      "time": "2022-12-24 20:00",
+      "busy_actual": 2.54,
+      "busy_pred": 4.02,
+      "free_pred": 1.98
+    },
+    {
+      "time": "2022-12-24 21:00",
+      "busy_actual": 2.55,
+      "busy_pred": 3.62,
+      "free_pred": 2.38
+    },
+    {
+      "time": "2022-12-24 22:00",
+      "busy_actual": 2.58,
+      "busy_pred": 3.73,
+      "free_pred": 2.27
+    },
+    {
+      "time": "2022-12-24 23:00",
+      "busy_actual": 2.58,
+      "busy_pred": 2.31,
+      "free_pred": 3.69
+    },
+    {
+      "time": "2022-12-25 00:00",
+      "busy_actual": 2.58,
+      "busy_pred": 2.4,
+      "free_pred": 3.6
+    },
+    {
+      "time": "2022-12-25 01:00",
+      "busy_actual": 2.62,
+      "busy_pred": 3.0,
+      "free_pred": 3.0
+    },
+    {
+      "time": "2022-12-25 02:00",
+      "busy_actual": 2.66,
+      "busy_pred": 2.8,
+      "free_pred": 3.2
+    },
+    {
+      "time": "2022-12-25 03:00",
+      "busy_actual": 2.77,
+      "busy_pred": 2.39,
+      "free_pred": 3.61
+    },
+    {
+      "time": "2022-12-25 04:00",
+      "busy_actual": 2.86,
+      "busy_pred": 2.32,
+      "free_pred": 3.68
+    },
+    {
+      "time": "2022-12-25 05:00",
+      "busy_actual": 2.94,
+      "busy_pred": 2.54,
+      "free_pred": 3.46
+    },
+    {
+      "time": "2022-12-25 06:00",
+      "busy_actual": 3.02,
+      "busy_pred": 2.89,
+      "free_pred": 3.11
+    },
+    {
+      "time": "2022-12-25 07:00",
+      "busy_actual": 3.11,
+      "busy_pred": 2.5,
+      "free_pred": 3.5
+    },
+    {
+      "time": "2022-12-25 08:00",
+      "busy_actual": 3.24,
+      "busy_pred": 2.48,
+      "free_pred": 3.52
+    },
+    {
+      "time": "2022-12-25 09:00",
+      "busy_actual": 3.32,
+      "busy_pred": 2.48,
+      "free_pred": 3.52
+    },
+    {
+      "time": "2022-12-25 10:00",
+      "busy_actual": 3.4,
+      "busy_pred": 2.08,
+      "free_pred": 3.92
+    },
+    {
+      "time": "2022-12-25 11:00",
+      "busy_actual": 3.49,
+      "busy_pred": 1.57,
+      "free_pred": 4.43
+    },
+    {
+      "time": "2022-12-25 12:00",
+      "busy_actual": 3.57,
+      "busy_pred": 1.53,
+      "free_pred": 4.47
+    },
+    {
+      "time": "2022-12-25 13:00",
+      "busy_actual": 3.64,
+      "busy_pred": 1.53,
+      "free_pred": 4.47
+    },
+    {
+      "time": "2022-12-25 14:00",
+      "busy_actual": 3.68,
+      "busy_pred": 1.45,
+      "free_pred": 4.55
+    }
+  ]
+}

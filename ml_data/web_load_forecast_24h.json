@@ -1,0 +1,181 @@
+{
+  "station_id": "1459",
+  "station_name": "UrbanEV-1459",
+  "generated_at": "2026-09-09T15:57:44",
+  "horizon_h": 24,
+  "mode": "rolling-backtest",
+  "unit": "kWh",
+  "desc": "未来24h滚动窗口回测(每个点代表一个窗口起点)",
+  "peak_threshold": 468.34,
+  "points": [
+    {
+      "time": "2023-01-17 10:00",
+      "actual": 393.75,
+      "load": 392.26,
+      "linear": 378.24,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 11:00",
+      "actual": 404.83,
+      "load": 363.33,
+      "linear": 366.57,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 12:00",
+      "actual": 421.17,
+      "load": 328.19,
+      "linear": 317.28,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 13:00",
+      "actual": 443.33,
+      "load": 316.02,
+      "linear": 281.79,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 14:00",
+      "actual": 464.92,
+      "load": 323.44,
+      "linear": 295.09,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 15:00",
+      "actual": 476.58,
+      "load": 325.54,
+      "linear": 303.01,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 16:00",
+      "actual": 483.58,
+      "load": 300.13,
+      "linear": 308.64,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 17:00",
+      "actual": 496.42,
+      "load": 383.43,
+      "linear": 315.47,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 18:00",
+      "actual": 511.58,
+      "load": 348.53,
+      "linear": 266.59,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 19:00",
+      "actual": 525.58,
+      "load": 344.15,
+      "linear": 281.39,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 20:00",
+      "actual": 537.25,
+      "load": 401.92,
+      "linear": 354.92,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 21:00",
+      "actual": 546.58,
+      "load": 422.5,
+      "linear": 350.14,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 22:00",
+      "actual": 547.75,
+      "load": 449.26,
+      "linear": 371.28,
+      "peak": false
+    },
+    {
+      "time": "2023-01-17 23:00",
+      "actual": 546.58,
+      "load": 406.76,
+      "linear": 435.12,
+      "peak": false
+    },
+    {
+      "time": "2023-01-18 00:00",
+      "actual": 537.25,
+      "load": 608.72,
+      "linear": 399.22,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 01:00",
+      "actual": 523.25,
+      "load": 583.97,
+      "linear": 487.33,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 02:00",
+      "actual": 509.25,
+      "load": 587.87,
+      "linear": 531.0,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 03:00",
+      "actual": 495.25,
+      "load": 581.8,
+      "linear": 528.45,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 04:00",
+      "actual": 481.25,
+      "load": 596.05,
+      "linear": 534.84,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 05:00",
+      "actual": 467.25,
+      "load": 611.74,
+      "linear": 528.87,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 06:00",
+      "actual": 453.25,
+      "load": 608.94,
+      "linear": 527.38,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 07:00",
+      "actual": 439.25,
+      "load": 615.65,
+      "linear": 535.32,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 08:00",
+      "actual": 425.25,
+      "load": 624.45,
+      "linear": 538.31,
+      "peak": true
+    },
+    {
+      "time": "2023-01-18 09:00",
+      "actual": 411.25,
+      "load": 618.52,
+      "linear": 541.29,
+      "peak": true
+    }
+  ],
+  "metrics": {}
+}
