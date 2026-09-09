@@ -111,16 +111,25 @@ json orderToJson(const ncs::Order& o) {
         return t.isValid() ? t.toUTC().toString(Qt::ISODate).toStdString()
                            : std::string();
     };
-    return json{{"id", o.id},
-                {"phone", o.phone.toStdString()},
-                {"station_id", o.stationId},
-                {"device_id", o.deviceId},
-                {"unit_price_cents", o.unitPriceCents},
-                {"amount_cents", o.amountCents},
-                {"energy_kwh", o.energyKwh},
-                {"status", static_cast<int>(o.status)},
-                {"started_at", iso(o.startedAt)},
-                {"finished_at", iso(o.finishedAt)}};
+    json j{{"id", o.id},
+           {"phone", o.phone.toStdString()},
+           {"station_id", o.stationId},
+           {"device_id", o.deviceId},
+           {"unit_price_cents", o.unitPriceCents},
+           {"amount_cents", o.amountCents},
+           {"energy_kwh", o.energyKwh},
+           {"status", static_cast<int>(o.status)},
+           {"started_at", iso(o.startedAt)},
+           {"finished_at", iso(o.finishedAt)}};
+    // 充电时长:charge_started_at → finished_at/当前(预约未开始=0)
+    long long dur = 0;
+    if (o.chargeStartedAt.isValid())
+        dur = o.finishedAt.isValid()
+                  ? o.chargeStartedAt.secsTo(o.finishedAt)
+                  : qMax<long long>(
+                        0, o.chargeStartedAt.secsTo(QDateTime::currentDateTimeUtc()));
+    j["duration_sec"] = dur;
+    return j;
 }
 }  // namespace
 
@@ -483,10 +492,17 @@ void BackendApp::registerRoutes() {
                      return;
                  }
                  const int id = std::stoi(req.matches[1]);
-                 const auto devices = store_.listDevicesByStation(id);
+                 DeviceFilter f;
+                 f.stationId = id;
+                 QVector<DeviceRow> rows;
+                 store_.listDevicesAdmin(f, 512, 0, &rows);
                  json arr = json::array();
-                 for (const auto& d : devices)
-                     arr.push_back(deviceToJson(d));
+                 for (const auto& r : rows) {
+                     json j = deviceToJson(r.dev);
+                     j["sessions"] = r.sessions;      // 累计充电次数(与 admin 同口径)
+                     j["charging_sec"] = r.chargeSec; // 累计充电时长(秒)
+                     arr.push_back(std::move(j));
+                 }
                  replyOk(res, std::move(arr));
              });
 
