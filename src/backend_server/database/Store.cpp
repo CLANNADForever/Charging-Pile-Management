@@ -220,6 +220,34 @@ bool Store::seedIfEmptyLocked() {
     if (hasRows)
         return true;
 
+    // 测试兼容模式：ncs_server_tests 仍按旧的 3 站 9 桩种子断言。
+    // perflex 新种子(10站/约50桩/20用户/订单)是大屏演示口径；
+    // 测试二进制通过 NCS_TEST_LEGACY_SEED=1 显式选择旧种子。
+    if (qEnvironmentVariableIsSet("NCS_TEST_LEGACY_SEED")) {
+        const char* stations =
+            "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,"
+            "free_piles,price_slow_cents,price_ultra_cents,amenities,parking,location,is_promo,"
+            "open_hours,min_charge_cents) VALUES"
+            " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2,140,280,339,1,0,1,'00:00-24:00',0),"
+            " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3,160,300,107,0,1,0,'06:00-24:00',0),"
+            " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2,180,320,405,2,0,1,'00:00-24:00',0)";
+        char* err = nullptr;
+        if (sqlite3_exec(db_, stations, nullptr, nullptr, &err) != SQLITE_OK) {
+            sqlite3_free(err);
+            return false;
+        }
+        const char* devices =
+            "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES"
+            " (1,0,0,120.0,0.0),(1,1,0,7.0,0.0),(1,0,1,180.0,12.5),"
+            " (2,0,0,120.0,0.0),(2,1,0,7.0,0.0),(2,0,2,180.0,3.2),(2,0,0,120.0,0.0),"
+            " (3,1,0,7.0,0.0),(3,0,0,180.0,0.0)";
+        if (sqlite3_exec(db_, devices, nullptr, nullptr, &err) != SQLITE_OK) {
+            sqlite3_free(err);
+            return false;
+        }
+        return true;
+    }
+
     // 固定种子：每次初始化生成一致的演示数据(10 站 / 约 50 桩 / 20 用户 / 近 30 天订单)
     std::mt19937 gen(20260909u);
     auto ri = [&gen](int lo, int hi) {

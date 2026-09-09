@@ -75,6 +75,9 @@ std::string extractCode(const std::string& body) {
 }  // namespace
 
 int main() {
+    // perflex 新种子面向大屏演示；本测试仍按旧 3 站 9 桩断言，选择 legacy 种子。
+    ::setenv("NCS_TEST_LEGACY_SEED", "1", 1);
+
     // 1) Store 直测
     const QString storeDb = tempDb("store");
     {
