@@ -787,7 +787,7 @@ void BackendApp::registerRoutes() {
                  replyOk(res, userToJson(u));
              });
 
-    // 历史订单(已支付, 可翻页)
+    // 历史订单(已支付/已取消, 可翻页)
     srv_.Get("/api/orders/history",
              [this](const httplib::Request& req, httplib::Response& res) {
                  const QString phone =
