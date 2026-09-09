@@ -1460,16 +1460,28 @@ void BackendApp::registerRoutes() {
                               });
              });
     srv_.Get("/api/ml/load-forecast",
-             [](const httplib::Request&, httplib::Response& res) {
-                 replyMlFile(res, QStringLiteral("web_load_forecast.json"));
+             [](const httplib::Request& req, httplib::Response& res) {
+                 const int h = intParam(req, "horizon", 1);
+                 QString name = QStringLiteral("web_load_forecast.json");
+                 if (h == 6)
+                     name = QStringLiteral("web_load_forecast_6h.json");
+                 else if (h >= 24)
+                     name = QStringLiteral("web_load_forecast_24h.json");
+                 replyMlFile(res, name);
              });
     srv_.Get("/api/ml/peaks",
              [](const httplib::Request&, httplib::Response& res) {
                  replyMlFile(res, QStringLiteral("web_peak_warnings.json"));
              });
     srv_.Get("/api/ml/occupancy",
-             [](const httplib::Request&, httplib::Response& res) {
-                 replyMlFile(res, QStringLiteral("occupancy_forecast.json"));
+             [](const httplib::Request& req, httplib::Response& res) {
+                 const int h = intParam(req, "horizon", 1);
+                 QString name = QStringLiteral("occupancy_forecast.json");
+                 if (h == 6)
+                     name = QStringLiteral("occupancy_forecast_6h.json");
+                 else if (h >= 24)
+                     name = QStringLiteral("occupancy_forecast_24h.json");
+                 replyMlFile(res, name);
              });
     srv_.Get("/api/ml/station-profiles",
              [](const httplib::Request&, httplib::Response& res) {

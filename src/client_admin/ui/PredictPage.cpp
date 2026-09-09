@@ -99,12 +99,8 @@ PredictPage::PredictPage(QWidget *parent)
         b->setCheckable(true);
         b->setCursor(Qt::PointingHandCursor);
     }
-    m_btn24->setChecked(true);
-    m_horizon = 24;
-    m_btn1->setEnabled(false);
-    m_btn6->setEnabled(false);
-    m_btn1->setToolTip(QStringLiteral("当前离线产物为 24h 逐时,1h/6h 待实时数据接入"));
-    m_btn6->setToolTip(QStringLiteral("当前离线产物为 24h 逐时,1h/6h 待实时数据接入"));
+    m_btn1->setChecked(true);
+    m_horizon = 1;
 
     m_stationCombo = new QComboBox(this);
     m_stationCombo->addItem(QStringLiteral("全部电站"), -1);
