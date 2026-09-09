@@ -120,7 +120,22 @@ static QString userLogin(const QString &phone)
     const QString hint = UserService::instance().requestCode(phone);
     if (!hint.contains(QStringLiteral("已发送")))
         return hint;
-    return UserService::instance().login(phone, QStringLiteral("123456"));
+    // send-code 演示返回随机码并明文放在提示里(形如 "验证码已发送（模拟）：982378")，
+    // 与 C 端真实流程一致:从提示末尾提取数字后登录
+    int ci = hint.lastIndexOf(QStringLiteral("："));
+    if (ci < 0)
+        ci = hint.lastIndexOf(QLatin1Char(':'));
+    QString code;
+    if (ci >= 0) {
+        const QString tail = hint.mid(ci + 1);
+        int n = 0;
+        while (n < tail.size() && tail[n].isDigit())
+            ++n;
+        code = tail.left(n);
+    }
+    if (code.isEmpty())
+        return hint;  // 未能从提示解析出验证码,直接透传提示供排查
+    return UserService::instance().login(phone, code);
 }
 
 void TstNcs::smokeLoginStations()
