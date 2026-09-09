@@ -66,6 +66,23 @@
       var id = String(evt.geometry.id).replace('st', '');
       if (bridge) bridge.onStationClicked(parseInt(id, 10));
     });
+
+    // 视野对齐到电站集合:>=2 点取西南/东北角后 fitBounds、单点居中
+    if (geos.length >= 2) {
+      var bMinLat = list[0].lat, bMaxLat = list[0].lat;
+      var bMinLng = list[0].lng, bMaxLng = list[0].lng;
+      for (var bi = 1; bi < list.length; ++bi) {
+        if (list[bi].lat < bMinLat) bMinLat = list[bi].lat;
+        if (list[bi].lat > bMaxLat) bMaxLat = list[bi].lat;
+        if (list[bi].lng < bMinLng) bMinLng = list[bi].lng;
+        if (list[bi].lng > bMaxLng) bMaxLng = list[bi].lng;
+      }
+      map.fitBounds(new TMap.LatLngBounds(new TMap.LatLng(bMinLat, bMinLng),
+                                          new TMap.LatLng(bMaxLat, bMaxLng)), { padding: 80 });
+    } else if (geos.length === 1) {
+      map.setCenter(geos[0].position);
+      map.setZoom(15);
+    }
   }
 
   function focusStation(lat, lng) {
