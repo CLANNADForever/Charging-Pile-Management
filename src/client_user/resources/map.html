@@ -32,16 +32,17 @@
 
   function initMap() {
     map = new TMap.Map(document.getElementById('map'), {
-      center: new TMap.LatLng(30.2741, 120.1551),
-      zoom: 12,
+      center: new TMap.LatLng(39.9042, 116.4074),
+      zoom: 11,
       viewMode: '2D'
     });
   }
 
   function setUserLocation(lat, lng) {
     userLat = lat; userLng = lng;
+    if (userMarker) { userMarker.setMap(null); userMarker = null; }
     if (!map) return;
-    if (userMarker) userMarker.setMap(null);
+    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;  // 未知定位:不画标记
     userMarker = new TMap.MultiMarker({
       map: map,
       styles: { user: new TMap.MarkerStyle({ width: 20, height: 20, anchor: { x: 10, y: 10 }, src: USER_ICON }) },
@@ -66,6 +67,14 @@
       var id = String(evt.geometry.id).replace('st', '');
       if (bridge) bridge.onStationClicked(parseInt(id, 10));
     });
+    // 视野对齐到电站集合:>=2 点整合适配、单点居中(不依赖写死的初始中心)
+    if (geos.length >= 2) {
+      var pts = geos.map(function(g) { return g.position; });
+      map.fitBounds(new TMap.LatLngBounds(pts), { padding: 80 });
+    } else if (geos.length === 1) {
+      map.setCenter(geos[0].position);
+      map.setZoom(15);
+    }
   }
 
   function focusStation(lat, lng) {

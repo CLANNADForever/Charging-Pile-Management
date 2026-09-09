@@ -55,6 +55,8 @@ MapWidget::MapWidget(QWidget *parent)
     m_locateBtn->setCursor(Qt::PointingHandCursor);
     m_locateBtn->setFixedSize(64, 32);
     connect(m_locateBtn, &QPushButton::clicked, this, [this]() {
+        if (m_userLat == 0.0 && m_userLon == 0.0)
+            return;  // 未知定位:不跳转
         const QString js = QStringLiteral("if(window.focusStation) focusStation(%1,%2);")
                                .arg(m_userLat, 0, 'f', 6)
                                .arg(m_userLon, 0, 'f', 6);
@@ -102,10 +104,12 @@ void MapWidget::injectData()
     }
     const QString json = QString::fromUtf8(
         QJsonDocument(arr).toJson(QJsonDocument::Compact));
-    const QString js = QStringLiteral("if(window.setStations) setStations(") + json +
-        QStringLiteral("); if(window.setUserLocation) setUserLocation(%1,%2);")
-            .arg(m_userLat, 0, 'f', 6)
-            .arg(m_userLon, 0, 'f', 6);
+    QString js = QStringLiteral("if(window.setStations) setStations(") + json +
+        QStringLiteral(");");
+    if (m_userLat != 0.0 || m_userLon != 0.0)
+        js += QStringLiteral(" if(window.setUserLocation) setUserLocation(%1,%2);")
+                  .arg(m_userLat, 0, 'f', 6)
+                  .arg(m_userLon, 0, 'f', 6);
     m_view->page()->runJavaScript(js);
 }
 

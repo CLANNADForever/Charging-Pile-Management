@@ -256,9 +256,9 @@ void StationService::incrementChargerCount(int id)
 StationService::Location StationService::currentLocation() const
 {
     Location loc;
-    loc.latitude = 30.2741;
-    loc.longitude = 120.1551;
-    loc.label = QStringLiteral("杭州市西湖区");
+    loc.latitude = 39.9042;
+    loc.longitude = 116.4074;
+    loc.label = QStringLiteral("北京市东城区");
     return loc;
 }
 
