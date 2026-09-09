@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Charts Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Charts Network WebEngineWidgets WebChannel)
 
 add_subdirectory(src)
 

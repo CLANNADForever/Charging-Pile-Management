@@ -45,4 +45,4 @@ add_executable(ncs_user
     resources/resources.qrc
 )
 target_include_directories(ncs_user PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ncs_user PRIVATE ncs_front_core Qt6::Widgets)
+target_link_libraries(ncs_user PRIVATE ncs_front_core Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebChannel)

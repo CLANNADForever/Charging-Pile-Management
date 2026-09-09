@@ -1,57 +1,61 @@
 #include "Theme.h"
 
 #include <QApplication>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
+#include <QWebEngineView>
+#include <QWidget>
 
 namespace Theme {
 
 QString qss()
 {
     return QStringLiteral(R"qss(
-/* ===== NCS 用户端全局主题 (Motion-Driven + Bento) ===== */
+/* ===== NCS 用户端全局主题 (柔和能量环 / Soft-glow) ===== */
 QWidget {
     font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Helvetica", sans-serif;
     font-size: 14px;
-    color: #1A1D26;
+    color: #2A3240;
 }
 
 QWidget#root {
-    background: #F4F6FB;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #EDF3F9, stop:0.55 #F4F7FB, stop:1 #F8FAFC);
 }
 QWidget#loginRoot {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E8F2FF, stop:0.34 #F4F6FB, stop:1 #F4F6FB);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E3EFFB, stop:0.5 #F2F6FB, stop:1 #F8FAFC);
 }
 
-/* 底部导航栏 */
+/* 底部导航栏(柔和浮起) */
 QWidget#navBar {
     background: #FFFFFF;
-    border-top: 1px solid #EEF0F4;
+    border-top: 1px solid #EEF1F6;
 }
 NavButton {
     background: transparent;
     border: none;
 }
 
-/* 卡片 (Bento 白卡 + 细描边) */
+/* 卡片 (暖白 + 大圆角 + 极淡描边) */
 QFrame#card {
-    background: #FFFFFF;
-    border: 1px solid #EEF0F4;
-    border-radius: 16px;
+    background: #FDFEFF;
+    border: 1px solid #EEF1F6;
+    border-radius: 20px;
 }
 QFrame#logoCard {
-    background: #FFFFFF;
-    border: 1px solid #EEF0F4;
-    border-radius: 24px;
+    background: #FDFEFF;
+    border: 1px solid #EEF1F6;
+    border-radius: 26px;
 }
 QFrame#stationCard {
-    background: #FFFFFF;
-    border: 1px solid #EEF0F4;
-    border-radius: 16px;
+    background: #FDFEFF;
+    border: 1px solid #EEF1F6;
+    border-radius: 20px;
 }
 QFrame#divider {
-    background: #EEF0F4;
+    background: #EEF1F6;
 }
 QFrame#brandBar {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2F80FF, stop:0.5 #00D4FF, stop:1 #00B368);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5EA8FF, stop:0.5 #3EC9C0, stop:1 #45D094);
     border-radius: 2px;
 }
 
@@ -59,20 +63,20 @@ QFrame#brandBar {
 QLabel#pageTitle {
     font-size: 17px;
     font-weight: bold;
-    color: #1A1D26;
+    color: #2A3240;
 }
 QLabel#sectionTitle {
     font-size: 15px;
     font-weight: bold;
-    color: #1A1D26;
+    color: #2A3240;
 }
 QLabel#hintLabel {
     font-size: 12px;
-    color: #9AA0AC;
+    color: #98A1B0;
 }
 QLabel#valueLabel {
     font-size: 14px;
-    color: #1A1D26;
+    color: #2A3240;
 }
 QLabel#appTitle {
     font-size: 21px;
@@ -81,12 +85,12 @@ QLabel#appTitle {
 }
 QLabel#appSubtitle {
     font-size: 13px;
-    color: #9AA0AC;
+    color: #98A1B0;
 }
 QLabel#balanceBig {
     font-size: 30px;
     font-weight: bold;
-    color: #2F80FF;
+    color: #5EA8FF;
 }
 QLabel#couponEmoji {
     font-size: 40px;
@@ -95,47 +99,47 @@ QLabel#couponEmoji {
 /* 输入框 */
 QLineEdit {
     background: #FFFFFF;
-    border: 1px solid #E3E6EC;
-    border-radius: 12px;
+    border: 1px solid #E6EBF2;
+    border-radius: 14px;
     padding: 11px 14px;
     font-size: 15px;
-    selection-background-color: #2F80FF;
+    selection-background-color: #5EA8FF;
 }
 QLineEdit:focus {
-    border: 1px solid #2F80FF;
+    border: 1px solid #5EA8FF;
 }
 
-/* 主按钮(品牌渐变) */
+/* 主按钮(柔和品牌渐变) */
 QPushButton#primaryButton {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2F80FF, stop:1 #00B3D1);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5EA8FF, stop:0.55 #3EC9C0, stop:1 #45D094);
     color: #FFFFFF;
     border: none;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 13px 0;
     font-size: 15px;
     font-weight: bold;
 }
-QPushButton#primaryButton:pressed { background: #1E6AE0; }
-QPushButton#primaryButton:disabled { background: #C3D4EE; }
+QPushButton#primaryButton:pressed { background: #4C93E8; }
+QPushButton#primaryButton:disabled { background: #C7D8EE; }
 
 /* 描边按钮 */
 QPushButton#ghostButton {
     background: #FFFFFF;
-    color: #2F80FF;
-    border: 1px solid #2F80FF;
-    border-radius: 12px;
+    color: #5EA8FF;
+    border: 1px solid #BBD7FF;
+    border-radius: 14px;
     padding: 11px 0;
     font-size: 13px;
 }
 QPushButton#ghostButton:disabled {
-    color: #B9CDEA;
-    border-color: #D5E4F7;
+    color: #C0D2EC;
+    border-color: #DDE8F6;
 }
 
 /* 文字按钮 */
 QPushButton#textButton {
     background: transparent;
-    color: #2F80FF;
+    color: #5EA8FF;
     border: none;
     font-size: 14px;
 }
@@ -143,7 +147,7 @@ QPushButton#textButton {
 /* 危险文字按钮 */
 QPushButton#dangerTextButton {
     background: transparent;
-    color: #EF4444;
+    color: #F06A6A;
     border: none;
     font-size: 14px;
 }
@@ -152,7 +156,7 @@ QPushButton#dangerTextButton {
 QPushButton#backButton {
     background: transparent;
     border: none;
-    color: #1A1D26;
+    color: #2A3240;
     font-size: 26px;
 }
 
@@ -163,21 +167,21 @@ QPushButton#entryButton {
     text-align: left;
     padding: 16px 4px;
     font-size: 15px;
-    color: #1A1D26;
+    color: #2A3240;
 }
-QPushButton#entryButton:pressed { background: #F4F6FB; }
+QPushButton#entryButton:pressed { background: #F2F6FB; }
 
 /* 分类 tab */
 QPushButton#tabButton {
     background: #FFFFFF;
-    color: #8A8F99;
-    border: 1px solid #E3E6EC;
+    color: #8B93A1;
+    border: 1px solid #E6EBF2;
     border-radius: 18px;
     padding: 8px 0;
     font-size: 13px;
 }
 QPushButton#tabButton:checked {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2F80FF, stop:1 #00B3D1);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5EA8FF, stop:0.55 #3EC9C0, stop:1 #45D094);
     color: #FFFFFF;
     border: 1px solid transparent;
     font-weight: bold;
@@ -189,20 +193,20 @@ QWidget#searchBar {
 }
 QPushButton#searchButton {
     background: #FFFFFF;
-    border: 1px solid #E3E6EC;
+    border: 1px solid #E6EBF2;
     border-radius: 22px;
     padding: 11px 16px;
     text-align: left;
-    color: #9AA0AC;
+    color: #98A1B0;
     font-size: 14px;
 }
 
 /* 优惠横幅 */
 QPushButton#couponBanner {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FF5A4E, stop:1 #FFB300);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FF8A7A, stop:1 #FFB84D);
     color: #FFFFFF;
     border: none;
-    border-radius: 12px;
+    border-radius: 14px;
     margin: 8px 12px 0 12px;
     font-size: 14px;
     font-weight: bold;
@@ -213,67 +217,67 @@ QPushButton#couponBanner {
 /* 筛选 / 定位按钮 */
 QPushButton#filterButton {
     background: #FFFFFF;
-    border: 1px solid #E3E6EC;
+    border: 1px solid #E6EBF2;
     border-radius: 18px;
     padding: 7px 0;
     font-size: 13px;
-    color: #1A1D26;
+    color: #2A3240;
 }
 QPushButton#locateButton {
-    background: #E6FFFFFF;
-    border: 1px solid #E3E6EC;
+    background: #F0F6FF;
+    border: 1px solid #DCE8F7;
     border-radius: 16px;
-    color: #2F80FF;
+    color: #5EA8FF;
     font-size: 12px;
 }
 
 /* 下拉框 */
 QComboBox {
     background: #FFFFFF;
-    border: 1px solid #E3E6EC;
+    border: 1px solid #E6EBF2;
     border-radius: 18px;
     padding: 7px 10px;
     font-size: 13px;
-    color: #1A1D26;
+    color: #2A3240;
 }
 QComboBox::drop-down { border: none; width: 20px; }
 QComboBox QAbstractItemView {
     background: #FFFFFF;
-    border: 1px solid #E3E6EC;
+    border: 1px solid #E6EBF2;
     selection-background-color: #EAF3FF;
-    selection-color: #2F80FF;
+    selection-color: #5EA8FF;
 }
 
 /* 下拉菜单(筛选) */
 QMenu {
     background: #FFFFFF;
-    border: 1px solid #E3E6EC;
+    border: 1px solid #E6EBF2;
     border-radius: 12px;
     padding: 8px;
 }
 QMenu::item {
     padding: 9px 24px 9px 16px;
     border-radius: 8px;
-    color: #1A1D26;
+    color: #2A3240;
     font-size: 14px;
 }
 QMenu::item:selected {
     background: #EAF3FF;
-    color: #2F80FF;
+    color: #5EA8FF;
 }
 QMenu::item:checked {
-    color: #2F80FF;
+    color: #5EA8FF;
     font-weight: bold;
 }
 QMenu::separator {
     height: 1px;
-    background: #EEF0F4;
+    background: #EEF1F6;
     margin: 4px 8px;
 }
 
 /* 页面栈与滚动区:统一浅色底,避免深色块 */
 QStackedWidget {
-    background: #F4F6FB;
+    background: transparent;
 }
 QScrollArea {
     background: transparent;
@@ -296,14 +300,14 @@ QListWidget::item {
 QTableWidget {
     background: #FFFFFF;
     border: none;
-    gridline-color: #EEF0F4;
+    gridline-color: #EEF1F6;
 }
 QHeaderView::section {
     background: #F7F9FC;
     border: none;
     padding: 9px 4px;
     font-size: 12px;
-    color: #8A8F99;
+    color: #8B93A1;
 }
 QTableWidget::item {
     padding: 7px 4px;
@@ -311,7 +315,7 @@ QTableWidget::item {
 
 /* Toast */
 QLabel#toast {
-    background: #DD0A1128;
+    background: #DD2A3240;
     color: #FFFFFF;
     border-radius: 20px;
     font-size: 13px;
@@ -339,6 +343,27 @@ QLinearGradient brandGradient(Qt::Orientation orientation)
     g.setColorAt(0.5, Cyan);
     g.setColorAt(1.0, BrandGreen);
     return g;
+}
+
+void fadeIn(QWidget *w)
+{
+    if (!w)
+        return;
+    // QGraphicsOpacityEffect 的离屏渲染与 QWebEngineView 冲突(会崩溃/黑屏),跳过含地图的页面
+    if (w->findChild<QWebEngineView *>())
+        return;
+    // 离屏淡入;动画结束移除特效。注意 setGraphicsEffect(nullptr) 会删除旧特效,切勿再手动 delete
+    auto *eff = new QGraphicsOpacityEffect(w);
+    w->setGraphicsEffect(eff);
+    auto *anim = new QPropertyAnimation(eff, "opacity", w);
+    anim->setDuration(220);
+    anim->setStartValue(0.0);
+    anim->setEndValue(1.0);
+    anim->setEasingCurve(QEasingCurve::OutCubic);
+    QObject::connect(anim, &QPropertyAnimation::finished, w, [w]() {
+        w->setGraphicsEffect(nullptr);
+    });
+    anim->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 } // namespace Theme

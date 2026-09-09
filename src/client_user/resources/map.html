@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+  html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+  #fallback {
+    position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+    display: none; align-items: center; justify-content: center;
+    background: #EEF2F6; color: #6b7280; font-size: 14px; text-align: center; padding: 24px;
+  }
+</style>
+<script src="https://map.qq.com/api/gljs?v=1.exp&amp;key=KQ3BZ-XEZCH-2JMDH-WTGAP-26XS5-IZBJN"></script>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+<div id="map"></div>
+<div id="fallback">地图加载失败：请检查网络或腾讯地图 Key 配置</div>
+<script>
+(function() {
+  var bridge = null;
+  var map = null;
+  var userMarker = null;
+  var stationMarker = null;
+  var routePolyline = null;
+  var userLat = 0, userLng = 0;
+
+  var STATION_ICON = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><circle cx='14' cy='14' r='10' fill='%232DD4A7' stroke='white' stroke-width='2'/></svg>";
+  var USER_ICON = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='7' fill='%234D9FFF' stroke='white' stroke-width='2'/></svg>";
+
+  function initMap() {
+    map = new TMap.Map(document.getElementById('map'), {
+      center: new TMap.LatLng(30.2741, 120.1551),
+      zoom: 12,
+      viewMode: '2D'
+    });
+  }
+
+  function setUserLocation(lat, lng) {
+    userLat = lat; userLng = lng;
+    if (!map) return;
+    if (userMarker) userMarker.setMap(null);
+    userMarker = new TMap.MultiMarker({
+      map: map,
+      styles: { user: new TMap.MarkerStyle({ width: 20, height: 20, anchor: { x: 10, y: 10 }, src: USER_ICON }) },
+      geometries: [{ id: 'user', styleId: 'user', position: new TMap.LatLng(lat, lng) }]
+    });
+  }
+
+  function setStations(list) {
+    if (!map) return;
+    if (stationMarker) stationMarker.setMap(null);
+    var geos = [];
+    (list || []).forEach(function(s) {
+      geos.push({ id: 'st' + s.id, styleId: 'station', position: new TMap.LatLng(s.lat, s.lng), name: s.name });
+    });
+    if (!geos.length) return;
+    stationMarker = new TMap.MultiMarker({
+      map: map,
+      styles: { station: new TMap.MarkerStyle({ width: 28, height: 28, anchor: { x: 14, y: 14 }, src: STATION_ICON }) },
+      geometries: geos
+    });
+    stationMarker.on('click', function(evt) {
+      var id = String(evt.geometry.id).replace('st', '');
+      if (bridge) bridge.onStationClicked(parseInt(id, 10));
+    });
+  }
+
+  function focusStation(lat, lng) {
+    if (!map) return;
+    map.setCenter(new TMap.LatLng(lat, lng));
+    map.setZoom(15);
+  }
+
+  // 解码腾讯压缩 polyline:[lat0, lng0, Δlat, Δlng, ...],增量单位 1e-6 度
+  function decodePolyline(arr) {
+    if (!arr || arr.length < 2) return [];
+    var coords = [[arr[0], arr[1]]];
+    var lat = arr[0], lng = arr[1];
+    for (var i = 2; i + 1 < arr.length; i += 2) {
+      lat += arr[i] / 1000000;
+      lng += arr[i + 1] / 1000000;
+      coords.push([lat, lng]);
+    }
+    return coords;
+  }
+
+  // 抽取整条路线坐标:驾车/步行取顶层 polyline,公交拼 steps
+  function extractPolyline(route) {
+    var coords = [];
+    if (route.polyline && route.polyline.length >= 2) {
+      coords = decodePolyline(route.polyline);
+    } else if (route.steps) {
+      route.steps.forEach(function(st) {
+        var seg = decodePolyline(st.polyline);
+        if (!seg.length) return;
+        if (coords.length) coords = coords.concat(seg.slice(1));
+        else coords = coords.concat(seg);
+      });
+    }
+    return coords;
+  }
+
+  // 兜底:路线接口失败(配额/网络)时画虚线直线
+  function drawStraightFallback(fromLat, fromLng, toLat, toLng) {
+    var latLngs = [new TMap.LatLng(fromLat, fromLng), new TMap.LatLng(toLat, toLng)];
+    if (routePolyline) routePolyline.setMap(null);
+    routePolyline = new TMap.MultiPolyline({
+      map: map,
+      styles: { route: new TMap.PolylineStyle({ color: '#F59E0B', width: 4, borderWidth: 1, borderColor: '#ffffff' }) },
+      geometries: [{ id: 'route', styleId: 'route', paths: latLngs }]
+    });
+    map.fitBounds(new TMap.LatLngBounds(latLngs), { padding: 60 });
+  }
+
+  window.__onRoute = function(resp) {
+    var args = window.__routeArgs;
+    var ok = resp && resp.status === 0 && resp.result && resp.result.routes && resp.result.routes.length;
+    var coords = ok ? extractPolyline(resp.result.routes[0]) : [];
+    if (!coords.length) {
+      if (args) drawStraightFallback(args[0], args[1], args[2], args[3]);
+      return;
+    }
+    var latLngs = coords.map(function(c) { return new TMap.LatLng(c[0], c[1]); });
+    if (routePolyline) routePolyline.setMap(null);
+    routePolyline = new TMap.MultiPolyline({
+      map: map,
+      styles: { route: new TMap.PolylineStyle({ color: '#4D9FFF', width: 6, borderWidth: 2, borderColor: '#ffffff' }) },
+      geometries: [{ id: 'route', styleId: 'route', paths: latLngs }]
+    });
+    map.fitBounds(new TMap.LatLngBounds(latLngs), { padding: 60 });
+  };
+
+  function drawRoute(fromLat, fromLng, toLat, toLng, mode) {
+    if (!map) return;
+    window.__routeArgs = [fromLat, fromLng, toLat, toLng];
+    var type = (mode === 'walk') ? 'walking' : (mode === 'bus') ? 'transit' : 'driving';
+    var url = 'https://apis.map.qq.com/ws/direction/v1/' + type + '/?from=' + fromLat + ',' + fromLng +
+              '&to=' + toLat + ',' + toLng + '&key=KQ3BZ-XEZCH-2JMDH-WTGAP-26XS5-IZBJN&output=jsonp&callback=__onRoute';
+    var s = document.createElement('script');
+    s.src = url;
+    document.body.appendChild(s);
+    s.onload = function() { document.body.removeChild(s); };
+  }
+
+  function clearRoute() {
+    if (routePolyline) { routePolyline.setMap(null); routePolyline = null; }
+  }
+
+  // 暴露给 C++ runJavaScript 调用
+  window.setUserLocation = setUserLocation;
+  window.setStations = setStations;
+  window.focusStation = focusStation;
+  window.drawRoute = drawRoute;
+  window.clearRoute = clearRoute;
+
+  // QWebChannel 桥接(JS → C++);未设置 channel 时安全跳过
+  if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
+    new QWebChannel(qt.webChannelTransport, function(channel) {
+      bridge = channel.objects.bridge;
+    });
+  }
+
+  if (typeof TMap === 'undefined') {
+    document.getElementById('fallback').style.display = 'flex';
+    return;
+  }
+  initMap();
+})();
+</script>
+</body>
+</html>

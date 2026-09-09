@@ -175,6 +175,7 @@ void MainWindow::switchTab(int index)
 
     m_current = index;
     m_stack->setCurrentIndex(index);
+    Theme::fadeIn(m_stack->currentWidget());
 
     if (index == 0)
         m_stationList->refresh();
@@ -189,6 +190,7 @@ void MainWindow::pushPage(Page *page)
     connect(page, &Page::backRequested, this, &MainWindow::popPage);
     m_stack->addWidget(page);
     m_stack->setCurrentWidget(page);
+    Theme::fadeIn(page);
 }
 
 void MainWindow::popPage()

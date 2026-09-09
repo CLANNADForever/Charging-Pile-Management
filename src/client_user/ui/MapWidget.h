@@ -5,11 +5,12 @@
 
 #include "core/service/StationService.h"
 
+class QWebEngineView;
+class QWebChannel;
 class QPushButton;
-class QTimer;
 
-// 简化地图(兜底方案):柔和浅灰底 + 网格 + 电站标记 + 用户定位。
-// 支持点击电站标记进入详情;无腾讯地图 Key/网络时使用。
+// 地图浏览(UC-U-05):内嵌腾讯地图(QWebEngineView)展示电站 + 用户定位。
+// 点击电站标记回传 stationClicked;无 Key/网络时页面自带兜底提示。
 class MapWidget : public QWidget
 {
     Q_OBJECT
@@ -22,22 +23,16 @@ signals:
     void stationClicked(int stationId);
 
 protected:
-    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
-    void mousePressEvent(QMouseEvent *event) override;
 
 private:
-    void repositionLocateButton();
-    void updateBounds();
-    QPointF project(double lat, double lon) const;
+    void injectData();
 
+    QWebEngineView *m_view = nullptr;
+    QWebChannel *m_channel = nullptr;
+    QPushButton *m_locateBtn = nullptr;
     QList<Station> m_stations;
     double m_userLat = 0.0;
     double m_userLon = 0.0;
-    double m_minLat = 0.0, m_maxLat = 0.0;
-    double m_minLon = 0.0, m_maxLon = 0.0;
-
-    QPushButton *m_locateBtn = nullptr;
-    QTimer *m_pulseTimer = nullptr;
-    qreal m_pulse = 0.0;
+    bool m_loaded = false;
 };
