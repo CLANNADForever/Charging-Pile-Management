@@ -15,6 +15,7 @@
 #include "OrderDetailPage.h"
 #include "OrderListPage.h"
 #include "OrderSettlePage.h"
+#include "ScanPage.h"
 #include "SearchPage.h"
 #include "StationDetailPage.h"
 #include "StationListPage.h"
@@ -97,7 +98,18 @@ MainWindow::MainWindow(QWidget *parent)
     scanBtn->setFixedSize(68, 68);
     scanBtn->setCursor(Qt::PointingHandCursor);
     connect(scanBtn, &QPushButton::clicked, this, [this]() {
-        Toast::show(this, QStringLiteral("扫码功能暂未开放"));
+        auto *scan = new ScanPage(this);
+        connect(scan, &ScanPage::scanned, this, [this](const QString &text) {
+            bool ok = false;
+            const int stationId = text.trimmed().toInt(&ok);
+            if (ok && stationId > 0) {
+                popPage();  // 关闭扫码页
+                openChargePage(stationId);
+            } else {
+                Toast::show(this, QStringLiteral("二维码无效:") + text);
+            }
+        });
+        pushPage(scan);
     });
     scanBtn->move((420 - scanBtn->width()) / 2, 760 - 64 - 14);
     scanBtn->raise();
@@ -127,25 +139,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 主页面(电站列表)信号接线
     auto openStationDetail = [this](int stationId) {
         auto *detail = new StationDetailPage(stationId, this);
-        connect(detail, &StationDetailPage::chargeRequested, this, [this](int id) {
-            auto *charge = new ChargePage(id, this);
-            connect(charge, &ChargePage::settleRequested, this, [this](const QString &orderNo) {
-                auto *st = new OrderSettlePage(orderNo, this);
-                connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
-                pushPage(st);
-            });
-            connect(charge, &ChargePage::openOrderDetail, this, [this](const QString &orderNo) {
-                popPage();  // 移除选桩页
-                auto *od = new OrderDetailPage(orderNo, this);
-                connect(od, &OrderDetailPage::settleRequested, this, [this](const QString &no) {
-                    auto *st = new OrderSettlePage(no, this);
-                    connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
-                    pushPage(st);
-                });
-                pushPage(od);
-            });
-            pushPage(charge);
-        });
+        connect(detail, &StationDetailPage::chargeRequested, this, &MainWindow::openChargePage);
         connect(detail, &StationDetailPage::navRequested, this, [this](int id) {
             pushPage(new MapPage(id, this));
         });
@@ -213,4 +207,25 @@ void MainWindow::popPage()
     m_stack->removeWidget(w);
     w->deleteLater();
     m_stack->setCurrentIndex(m_current);
+}
+
+void MainWindow::openChargePage(int stationId)
+{
+    auto *charge = new ChargePage(stationId, this);
+    connect(charge, &ChargePage::settleRequested, this, [this](const QString &orderNo) {
+        auto *st = new OrderSettlePage(orderNo, this);
+        connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
+        pushPage(st);
+    });
+    connect(charge, &ChargePage::openOrderDetail, this, [this](const QString &orderNo) {
+        popPage();  // 移除选桩页
+        auto *od = new OrderDetailPage(orderNo, this);
+        connect(od, &OrderDetailPage::settleRequested, this, [this](const QString &no) {
+            auto *st = new OrderSettlePage(no, this);
+            connect(st, &OrderSettlePage::doneRequested, this, [this]() { switchTab(0); });
+            pushPage(st);
+        });
+        pushPage(od);
+    });
+    pushPage(charge);
 }

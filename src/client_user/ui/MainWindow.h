@@ -24,6 +24,7 @@ private:
     void switchTab(int index);
     void pushPage(Page *page);
     void popPage();
+    void openChargePage(int stationId);
 
     QStackedWidget *m_stack = nullptr;
     QList<NavButton *> m_navs;

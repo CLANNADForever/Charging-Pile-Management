@@ -34,6 +34,8 @@ add_executable(ncs_user
     ui/ChargeEntryPage.cpp
     ui/ChargePage.h
     ui/ChargePage.cpp
+    ui/ScanPage.h
+    ui/ScanPage.cpp
     ui/MapPage.h
     ui/MapPage.cpp
     theme/Theme.h

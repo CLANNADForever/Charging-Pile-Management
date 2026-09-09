@@ -57,7 +57,9 @@ ScanPage::ScanPage(QWidget *parent)
 
     root->addLayout(body, 1);
 
-    startCamera();
+    // 不自动启动摄像头：虚拟机 USB 透传会喂坏帧导致 GStreamer 崩溃。
+    // 点「拍照识别」才懒启动；「从图片识别」完全不依赖摄像头。
+    m_statusLabel->setText(QStringLiteral("点「从图片识别」选二维码图片，或点「拍照识别」启动摄像头"));
 }
 
 ScanPage::~ScanPage()
@@ -96,7 +98,16 @@ void ScanPage::stopCamera()
 
 void ScanPage::onShutterClicked()
 {
-    if (m_decoded || !m_imageCapture || !m_imageCapture->isReadyForCapture())
+    if (m_decoded)
+        return;
+    // 懒启动摄像头：首次点击启动，再次点击抓拍
+    if (!m_camera) {
+        startCamera();
+        if (m_camera && m_camera->isActive())
+            m_statusLabel->setText(QStringLiteral("摄像头已启动，请再次点击「拍照识别」抓拍"));
+        return;
+    }
+    if (!m_imageCapture || !m_imageCapture->isReadyForCapture())
         return;
     m_imageCapture->capture();
 }
