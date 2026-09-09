@@ -15,6 +15,7 @@
 #include <string>
 
 #include <QDate>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QDateTime>
@@ -208,6 +209,51 @@ json deviceOpToJson(const DeviceOpRow& o) {
                  o.at.isValid()
                      ? o.at.toUTC().toString(Qt::ISODate).toStdString()
                      : std::string()}};
+}
+
+}  // namespace
+
+namespace {
+
+// 离线 ML 产物读取：ml_data/*.json（当前目录优先，其次可执行文件旁）。
+// 后续接实时特征/训练服务后，替换此处的静态文件读取即可。
+bool readMlJson(const QString &name, nlohmann::json *out, QString *err)
+{
+    const QStringList roots = {
+        QStringLiteral("ml_data/"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/ml_data/"),
+    };
+    QString lastErr;
+    for (const QString &root : roots) {
+        QFile f(root + name);
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        const QByteArray raw = f.readAll();
+        try {
+            *out = nlohmann::json::parse(raw.toStdString());
+            return true;
+        } catch (const std::exception &e) {
+            lastErr = QString::fromUtf8(e.what());
+            return false;
+        }
+    }
+    if (err)
+        *err = lastErr.isEmpty()
+                   ? QStringLiteral("ml_data/") + name +
+                         QStringLiteral(" 不存在(请确认已放置离线模型产物)")
+                   : lastErr;
+    return false;
+}
+
+void replyMlFile(httplib::Response &res, const QString &name)
+{
+    nlohmann::json j;
+    QString err;
+    if (!readMlJson(name, &j, &err)) {
+        replyBizErr(res, err);
+        return;
+    }
+    replyOk(res, std::move(j));
 }
 
 }  // namespace
@@ -1368,6 +1414,52 @@ void BackendApp::registerRoutes() {
                  for (const auto& d : rows)
                      arr.push_back(dailyToJson(d));
                  replyOk(res, std::move(arr));
+             });
+
+    // ---------- 智能预测 ML 接口(离线产物; 供 Web 大屏 / B 端 PredictPage) ----------
+    srv_.Get("/api/ml/status",
+             [](const httplib::Request&, httplib::Response& res) {
+                 nlohmann::json j;
+                 QString err;
+                 if (!readMlJson(QStringLiteral("web_load_forecast.json"), &j, &err)) {
+                     replyOk(res, nlohmann::json{{"ready", false},
+                                                 {"message", err.toStdString()}});
+                     return;
+                 }
+                 replyOk(res, nlohmann::json{
+                                  {"ready", true},
+                                  {"source", "ml_data (UrbanEV offline sample)"},
+                                  {"mode", j.value("mode", "")},
+                                  {"station_id", j.value("station_id", "")},
+                              });
+             });
+    srv_.Get("/api/ml/load-forecast",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("web_load_forecast.json"));
+             });
+    srv_.Get("/api/ml/peaks",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("web_peak_warnings.json"));
+             });
+    srv_.Get("/api/ml/occupancy",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("occupancy_forecast.json"));
+             });
+    srv_.Get("/api/ml/station-profiles",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("station_profiles.json"));
+             });
+    srv_.Get("/api/ml/metrics",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("model_metrics_summary.json"));
+             });
+    srv_.Get("/api/ml/price-insight",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("price_insight.json"));
+             });
+    srv_.Get("/api/ml/congestion",
+             [](const httplib::Request&, httplib::Response& res) {
+                 replyMlFile(res, QStringLiteral("congestion_recommend.json"));
              });
 }
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------

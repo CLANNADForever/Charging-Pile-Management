@@ -1,0 +1,72 @@
+[
+  {
+    "station_id": 1001,
+    "daily_volume_kwh": 125.87753222836095,
+    "peak_hour": 9,
+    "weekday_ratio": 1.314772664797405,
+    "cluster": 1
+  },
+  {
+    "station_id": 1153,
+    "daily_volume_kwh": 532.4802025782687,
+    "peak_hour": 0,
+    "weekday_ratio": 0.8507249181360441,
+    "cluster": 0
+  },
+  {
+    "station_id": 1306,
+    "daily_volume_kwh": 136.3001841620626,
+    "peak_hour": 1,
+    "weekday_ratio": 0.79131791635641,
+    "cluster": 0
+  },
+  {
+    "station_id": 1459,
+    "daily_volume_kwh": 468.12338858195204,
+    "peak_hour": 6,
+    "weekday_ratio": 0.8627341355931354,
+    "cluster": 0
+  },
+  {
+    "station_id": 1765,
+    "daily_volume_kwh": 92.63075506445671,
+    "peak_hour": 19,
+    "weekday_ratio": 0.8295753053062712,
+    "cluster": 0
+  },
+  {
+    "station_id": 2070,
+    "daily_volume_kwh": 447.8420810313075,
+    "peak_hour": 10,
+    "weekday_ratio": 1.3531143249835034,
+    "cluster": 1
+  },
+  {
+    "station_id": 2223,
+    "daily_volume_kwh": 1195.4562615101288,
+    "peak_hour": 5,
+    "weekday_ratio": 0.716446533033859,
+    "cluster": 0
+  },
+  {
+    "station_id": 2376,
+    "daily_volume_kwh": 211.50184162062612,
+    "peak_hour": 5,
+    "weekday_ratio": 1.1631450195290087,
+    "cluster": 0
+  },
+  {
+    "station_id": 2529,
+    "daily_volume_kwh": 293.2716390423572,
+    "peak_hour": 0,
+    "weekday_ratio": 0.8221435410960428,
+    "cluster": 0
+  },
+  {
+    "station_id": 2682,
+    "daily_volume_kwh": 4.920810313075506,
+    "peak_hour": 10,
+    "weekday_ratio": 0.7027362590134187,
+    "cluster": 2
+  }
+]

@@ -38,7 +38,7 @@ const option = computed(() => ({
   },
   grid: { left: 44, right: 20, top: 24, bottom: 30 },
   xAxis: { ...categoryAxis(), type: 'category', data: props.data.map(d => d.time) },
-  yAxis: { ...valueAxis(), type: 'value', name: 'kW', nameTextStyle: { color: '#8A94A8' } },
+  yAxis: { ...valueAxis(), type: 'value', name: 'kWh/h', nameTextStyle: { color: '#8A94A8' } },
   series: [
     {
       type: 'line',

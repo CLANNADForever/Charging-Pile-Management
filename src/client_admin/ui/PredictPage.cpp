@@ -99,14 +99,21 @@ PredictPage::PredictPage(QWidget *parent)
         b->setCheckable(true);
         b->setCursor(Qt::PointingHandCursor);
     }
-    m_btn1->setChecked(true);
+    m_btn24->setChecked(true);
+    m_horizon = 24;
+    m_btn1->setEnabled(false);
+    m_btn6->setEnabled(false);
+    m_btn1->setToolTip(QStringLiteral("当前离线产物为 24h 逐时,1h/6h 待实时数据接入"));
+    m_btn6->setToolTip(QStringLiteral("当前离线产物为 24h 逐时,1h/6h 待实时数据接入"));
 
     m_stationCombo = new QComboBox(this);
     m_stationCombo->addItem(QStringLiteral("全部电站"), -1);
     for (const Station &s : StationService::instance().listStations())
         m_stationCombo->addItem(s.name, s.id);
+    m_stationCombo->setEnabled(false);
+    m_stationCombo->setToolTip(QStringLiteral("演示数据来自 UrbanEV 离线样本站"));
 
-    m_runBtn = new QPushButton(QStringLiteral("运行预测"), this);
+    m_runBtn = new QPushButton(QStringLiteral("刷新预测"), this);
     m_runBtn->setObjectName(QStringLiteral("secondaryButton"));
     m_runBtn->setCursor(Qt::PointingHandCursor);
     connect(m_runBtn, &QPushButton::clicked, this, &PredictPage::onRunPredict);
@@ -154,7 +161,7 @@ PredictPage::PredictPage(QWidget *parent)
     auto *tc = new QVBoxLayout(tableCard);
     tc->setContentsMargins(20, 16, 20, 16);
     tc->setSpacing(12);
-    auto *tableTitle = new QLabel(QStringLiteral("各站预测结果"), tableCard);
+    auto *tableTitle = new QLabel(QStringLiteral("预测汇总(离线模型)"), tableCard);
     tableTitle->setObjectName(QStringLiteral("cardTitle"));
     tc->addWidget(tableTitle);
     m_table = new QTableWidget(0, 4, tableCard);
@@ -204,14 +211,14 @@ void PredictPage::rebuild()
 void PredictPage::onRunPredict()
 {
     m_runBtn->setEnabled(false);
-    Toast::show(this, QStringLiteral("正在运行预测..."));
+    Toast::show(this, QStringLiteral("正在刷新预测..."));
 
     QTimer::singleShot(300, this, [this]() {
         const bool ok = PredictService::instance().runPrediction();
         if (ok)
             rebuild();
         Toast::show(this, ok ? QStringLiteral("预测完成,已刷新")
-                             : QStringLiteral("预测脚本不可用,已保留上次结果"));
+                             : QStringLiteral("ML 数据未就绪,已保留上次结果"));
         m_runBtn->setEnabled(true);
     });
 }

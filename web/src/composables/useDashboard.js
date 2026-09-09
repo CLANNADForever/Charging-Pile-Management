@@ -32,6 +32,31 @@ function yuan(cents) {
 async function loadBackend() {
   const overview = await apiJson('/api/admin/stats/overview')
   const daily = await apiJson('/api/admin/stats/daily?days=7')
+  // ML 预测：接口不可用/未部署时保留 fallbackData 静态曲线，保证页面不空白。
+  let mlLoad = null
+  let mlPeaks = null
+  try {
+    mlLoad = await apiJson('/api/ml/load-forecast')
+  } catch (e) {
+    mlLoad = null
+  }
+  if (mlLoad) {
+    try {
+      mlPeaks = await apiJson('/api/ml/peaks')
+    } catch (e) {
+      mlPeaks = null
+    }
+  }
+  const loadForecast = (mlLoad && mlLoad.points || []).map(p => ({
+    time: String(p.time || '').slice(11, 16),
+    load: p.load,
+    peak: !!p.peak
+  }))
+  const peakWarnings = (mlPeaks && mlPeaks.warnings || []).map(w => ({
+    time: String(w.start || '').slice(11, 16),
+    load: w.peak_kwh,
+    stations: w.stations
+  }))
 
   const kpi = {
     ...fallbackData.kpi,
@@ -62,7 +87,9 @@ async function loadBackend() {
     kpi,
     chargerStatus,
     health,
-    revenueTrend
+    revenueTrend,
+    loadForecast: loadForecast.length ? loadForecast : fallbackData.loadForecast,
+    peakWarnings: peakWarnings.length ? peakWarnings : fallbackData.peakWarnings
   }
 }
 

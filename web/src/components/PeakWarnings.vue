@@ -4,7 +4,7 @@
     <div v-else class="warn-list">
       <div v-for="(w, i) in items" :key="i" class="warn-item">
         <span class="dot"></span>
-        <span>{{ w.time }} 起进入高峰,预计负荷 {{ w.load }} kW,影响 {{ w.stations }} 站</span>
+        <span>{{ w.time }} 起进入高峰,预计负荷 {{ w.load }} kWh/h,影响 {{ w.stations }} 站</span>
       </div>
     </div>
   </div>

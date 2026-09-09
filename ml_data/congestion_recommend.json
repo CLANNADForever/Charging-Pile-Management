@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-09-08T23:52:30",
+  "source_db": "D:\\pyxm\\ncs_prediction\\processed\\ncs_snapshot.db",
+  "demo": true,
+  "desc": "预测空闲率 = 65% 离线占用预测(错位6h窗口) + 35% 现场实时占用",
+  "recommendations": [
+    {
+      "station_id": 2,
+      "station_name": "中关村充电站",
+      "total_piles": 4,
+      "current_free": 4,
+      "predicted_free_count": 3,
+      "predicted_free_ratio": 0.75,
+      "congestion_level": "high",
+      "model_busy_ratio": 0.472
+    },
+    {
+      "station_id": 1,
+      "station_name": "望京充电站",
+      "total_piles": 3,
+      "current_free": 2,
+      "predicted_free_count": 2,
+      "predicted_free_ratio": 0.667,
+      "congestion_level": "high",
+      "model_busy_ratio": 0.574
+    },
+    {
+      "station_id": 3,
+      "station_name": "亦庄超充站",
+      "total_piles": 2,
+      "current_free": 2,
+      "predicted_free_count": 1,
+      "predicted_free_ratio": 0.5,
+      "congestion_level": "mid",
+      "model_busy_ratio": 0.598
+    }
+  ]
+}

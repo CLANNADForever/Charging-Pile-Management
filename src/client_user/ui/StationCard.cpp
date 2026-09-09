@@ -23,7 +23,7 @@ QLabel *makeTag(const QString &text, const QString &bg, const QString &fg)
 
 StationCard::StationCard(const Station &station, double distanceKm,
                          const QStringList &powerTypes, int freeCount, int totalCount,
-                         QWidget *parent)
+                         QWidget *parent, const QString &tag)
     : QFrame(parent)
     , m_stationId(station.id)
 {
@@ -42,6 +42,8 @@ StationCard::StationCard(const Station &station, double distanceKm,
     top->addWidget(name, 1);
     if (station.hasCoupon)
         top->addWidget(makeTag(QStringLiteral("领券"), QStringLiteral("#FF3B30"), QStringLiteral("#FFFFFF")));
+    if (!tag.isEmpty())
+        top->addWidget(makeTag(tag, QStringLiteral("#E6F7EE"), QStringLiteral("#00B368")));
     lay->addLayout(top);
 
     // 功率标签 + 停车减免
