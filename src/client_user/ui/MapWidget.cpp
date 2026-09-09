@@ -104,13 +104,15 @@ void MapWidget::injectData()
     }
     const QString json = QString::fromUtf8(
         QJsonDocument(arr).toJson(QJsonDocument::Compact));
-    QString js = QStringLiteral("if(window.setStations) setStations(") + json +
-        QStringLiteral(");");
+    // 两个独立调用：setStations(含视野对齐)出错也不影响用户蓝点绘制
+    m_view->page()->runJavaScript(
+        QStringLiteral("if(window.setStations) setStations(") + json +
+        QStringLiteral(");"));
     if (m_userLat != 0.0 || m_userLon != 0.0)
-        js += QStringLiteral(" if(window.setUserLocation) setUserLocation(%1,%2);")
-                  .arg(m_userLat, 0, 'f', 6)
-                  .arg(m_userLon, 0, 'f', 6);
-    m_view->page()->runJavaScript(js);
+        m_view->page()->runJavaScript(
+            QStringLiteral("if(window.setUserLocation) setUserLocation(%1,%2);")
+                .arg(m_userLat, 0, 'f', 6)
+                .arg(m_userLon, 0, 'f', 6));
 }
 
 #include "MapWidget.moc"

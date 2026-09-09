@@ -797,7 +797,7 @@ QVector<ncs::Order> Store::listHistoryByPhone(const QString& phone, int limit,
     if (sqlite3_prepare_v2(db_,
                            "SELECT id,phone,station_id,device_id,unit_price_cents,"
                            "amount_cents,energy_kwh,status,started_at,finished_at,charge_started_at,battery_cap_kwh,start_soc_pct "
-                           "FROM orders WHERE phone=? AND status=3 "
+                           "FROM orders WHERE phone=? AND status IN (3,4) "
                            "ORDER BY id DESC LIMIT ? OFFSET ?",
                            -1, &st, nullptr) != SQLITE_OK)
         return out;
@@ -833,7 +833,7 @@ qint64 Store::countHistoryByPhone(const QString& phone) const {
     if (!db_)
         return -1;
     sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM orders WHERE phone=? AND status=3",
+    if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM orders WHERE phone=? AND status IN (3,4)",
                            -1, &st, nullptr) != SQLITE_OK)
         return -1;
     const QByteArray p = phone.toUtf8();
