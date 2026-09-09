@@ -67,10 +67,18 @@
       var id = String(evt.geometry.id).replace('st', '');
       if (bridge) bridge.onStationClicked(parseInt(id, 10));
     });
-    // 视野对齐到电站集合:>=2 点整合适配、单点居中(不依赖写死的初始中心)
+    // 视野对齐到电站集合:>=2 点取西南/东北角后 fitBounds、单点居中(不依赖写死的初始中心)
     if (geos.length >= 2) {
-      var pts = geos.map(function(g) { return g.position; });
-      map.fitBounds(new TMap.LatLngBounds(pts), { padding: 80 });
+      var bMinLat = list[0].lat, bMaxLat = list[0].lat;
+      var bMinLng = list[0].lng, bMaxLng = list[0].lng;
+      for (var bi = 1; bi < list.length; ++bi) {
+        if (list[bi].lat < bMinLat) bMinLat = list[bi].lat;
+        if (list[bi].lat > bMaxLat) bMaxLat = list[bi].lat;
+        if (list[bi].lng < bMinLng) bMinLng = list[bi].lng;
+        if (list[bi].lng > bMaxLng) bMaxLng = list[bi].lng;
+      }
+      map.fitBounds(new TMap.LatLngBounds(new TMap.LatLng(bMinLat, bMinLng),
+                                          new TMap.LatLng(bMaxLat, bMaxLng)), { padding: 80 });
     } else if (geos.length === 1) {
       map.setCenter(geos[0].position);
       map.setZoom(15);
@@ -121,7 +129,9 @@
       styles: { route: new TMap.PolylineStyle({ color: '#F59E0B', width: 4, borderWidth: 1, borderColor: '#ffffff' }) },
       geometries: [{ id: 'route', styleId: 'route', paths: latLngs }]
     });
-    map.fitBounds(new TMap.LatLngBounds(latLngs), { padding: 60 });
+    map.fitBounds(new TMap.LatLngBounds(
+        new TMap.LatLng(Math.min(fromLat, toLat), Math.min(fromLng, toLng)),
+        new TMap.LatLng(Math.max(fromLat, toLat), Math.max(fromLng, toLng))), { padding: 60 });
   }
 
   window.__onRoute = function(resp) {
@@ -139,7 +149,16 @@
       styles: { route: new TMap.PolylineStyle({ color: '#4D9FFF', width: 6, borderWidth: 2, borderColor: '#ffffff' }) },
       geometries: [{ id: 'route', styleId: 'route', paths: latLngs }]
     });
-    map.fitBounds(new TMap.LatLngBounds(latLngs), { padding: 60 });
+    var bMinLat = coords[0][0], bMaxLat = coords[0][0];
+    var bMinLng = coords[0][1], bMaxLng = coords[0][1];
+    for (var bi = 1; bi < coords.length; ++bi) {
+      if (coords[bi][0] < bMinLat) bMinLat = coords[bi][0];
+      if (coords[bi][0] > bMaxLat) bMaxLat = coords[bi][0];
+      if (coords[bi][1] < bMinLng) bMinLng = coords[bi][1];
+      if (coords[bi][1] > bMaxLng) bMaxLng = coords[bi][1];
+    }
+    map.fitBounds(new TMap.LatLngBounds(new TMap.LatLng(bMinLat, bMinLng),
+                                        new TMap.LatLng(bMaxLat, bMaxLng)), { padding: 60 });
   };
 
   function drawRoute(fromLat, fromLng, toLat, toLng, mode) {
