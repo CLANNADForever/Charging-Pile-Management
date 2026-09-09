@@ -29,7 +29,7 @@ const option = computed(() => ({
       data: props.data.map(d => d.count),
       smooth: true,
       itemStyle: { color: '#A78BFA' },
-      lineStyle: { width: 2 },
+      lineStyle: { width: 2.5, shadowBlur: 10, shadowColor: 'rgba(167,139,250,0.5)' },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: 'rgba(167,139,250,0.28)' },

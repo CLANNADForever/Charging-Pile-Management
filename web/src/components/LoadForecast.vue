@@ -45,7 +45,7 @@ const option = computed(() => ({
       data: props.data.map(d => d.load),
       smooth: true,
       itemStyle: { color: '#A78BFA' },
-      lineStyle: { width: 2 },
+      lineStyle: { width: 2.5, shadowBlur: 10, shadowColor: 'rgba(167,139,250,0.5)' },
       markArea: {
         silent: true,
         itemStyle: { color: 'rgba(239,68,68,0.14)' },

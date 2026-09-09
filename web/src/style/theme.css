@@ -1,16 +1,24 @@
-/* ===== NCS Web 大屏 深色主题(非纯黑) ===== */
+/* ===== NCS Web 大屏 · 高级科技主题 ===== */
 :root {
-  --bg-deep: #0B1220;
-  --panel: #121A29;
-  --border: #1B2740;
+  --bg-deep: #040A16;
+  --bg-mid: #0A1428;
+  --panel: rgba(15, 26, 46, 0.52);
+  --panel-solid: #0D172A;
+  --border: rgba(99, 179, 255, 0.16);
+  --border-strong: rgba(0, 229, 255, 0.35);
   --blue: #4D9FFF;
-  --cyan: #22D3EE;
+  --cyan: #00E5FF;
   --green: #2DD4A7;
-  --amber: #F59E0B;
-  --red: #EF4444;
+  --amber: #F5B544;
+  --red: #FF4D6A;
   --violet: #A78BFA;
-  --text-main: #E6ECF5;
-  --text-sub: #8A94A8;
+  --text-main: #EAF0FA;
+  --text-sub: #7E8AA0;
+  --text-dim: #55617A;
+  --glow-blue: rgba(77, 159, 255, 0.45);
+  --glow-cyan: rgba(0, 229, 255, 0.35);
+  --glow-green: rgba(45, 212, 167, 0.35);
+  --font: "SF Pro Display", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", "Helvetica", sans-serif;
 }
 
 * {
@@ -28,18 +36,56 @@ body,
 }
 
 body {
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Helvetica", sans-serif;
+  font-family: var(--font);
   background: var(--bg-deep);
   color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ===== 缩放容器:1920×1080 基准,等比缩放居中 ===== */
+/* ===== 缩放容器:1920×1080 基准 ===== */
 .screen-wrap {
   position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: radial-gradient(ellipse at center, #0E1628 0%, #0B1220 70%);
+  background:
+    radial-gradient(ellipse 60% 50% at 18% -5%, rgba(0, 229, 255, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 45% at 85% 105%, rgba(77, 159, 255, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 35% at 50% 50%, rgba(45, 212, 167, 0.05) 0%, transparent 60%),
+    linear-gradient(180deg, #040A16 0%, #081120 50%, #050C18 100%);
+}
+
+/* 悬浮网格(科技 HUD 感) */
+.screen-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99, 179, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 179, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 0%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* 流动光晕 */
+.screen-wrap::after {
+  content: '';
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  left: 50%;
+  top: -30vw;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.06) 0%, transparent 60%);
+  animation: aurora-drift 16s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes aurora-drift {
+  0% { transform: translateX(-55%) translateY(0); }
+  100% { transform: translateX(-45%) translateY(6vh); }
 }
 
 .screen {
@@ -51,54 +97,70 @@ body {
   left: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px 20px;
+  padding: 18px 22px;
 }
 
 /* ===== 顶部标题栏 ===== */
 .titlebar {
-  height: 72px;
+  height: 74px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 8px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  position: relative;
+}
+.titlebar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-strong) 30%, var(--border-strong) 70%, transparent);
 }
 
 .titlebar-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
 .logo {
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
-  background: #FFFFFF;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   flex-shrink: 0;
+  box-shadow: 0 0 18px var(--glow-cyan), inset 0 0 12px rgba(0, 229, 255, 0.15);
 }
 .logo img {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
 }
 
 .main-title {
-  font-size: 24px;
-  font-weight: bold;
-  color: var(--text-main);
-  letter-spacing: 1px;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  background: linear-gradient(90deg, #EAF0FA 0%, #6FD4FF 45%, #00E5FF 70%, #2DD4A7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px var(--glow-cyan));
 }
 
 .sub-title {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-sub);
-  margin-top: 2px;
+  letter-spacing: 5px;
+  margin-top: 3px;
 }
 
 .titlebar-right {
@@ -107,9 +169,11 @@ body {
 
 .clock {
   font-size: 22px;
-  font-weight: bold;
+  font-weight: 700;
   color: var(--cyan);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px var(--glow-cyan);
 }
 
 .data-through {
@@ -120,10 +184,10 @@ body {
 
 /* ===== 核心指标带 ===== */
 .kpi-band {
-  height: 128px;
+  height: 132px;
   display: flex;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 14px;
+  margin-bottom: 16px;
 }
 
 .kpi-placeholder {
@@ -144,39 +208,47 @@ body {
   min-height: 0;
   display: grid;
   grid-template-columns: 25% 50% 25%;
-  gap: 12px;
+  gap: 14px;
 }
 
 .column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-height: 0;
   overflow: hidden;
 }
 
-/* 列内面板均分高度 */
 .column .panel {
   flex: 1 1 0;
   min-height: 0;
 }
 
-/* ===== 面板 ===== */
+/* ===== 面板(玻璃拟态 + 光效) ===== */
 .panel {
+  position: relative;
   background: var(--panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: box-shadow 0.35s, border-color 0.35s;
+}
+.panel:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45), 0 0 22px var(--glow-blue);
 }
 
 .panel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px 8px;
+  gap: 9px;
+  padding: 13px 16px 10px;
 }
 
 .panel-bar {
@@ -184,29 +256,30 @@ body {
   height: 16px;
   border-radius: 2px;
   background: linear-gradient(180deg, var(--blue), var(--cyan));
+  box-shadow: 0 0 8px var(--glow-cyan);
 }
 
 .panel-title {
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 600;
   color: var(--text-main);
+  letter-spacing: 1px;
 }
 
 .panel-unit {
   margin-left: auto;
   font-size: 12px;
-  color: var(--text-sub);
+  color: var(--text-dim);
 }
 
 .panel-body {
   flex: 1;
   min-height: 0;
-  padding: 0 12px 12px;
+  padding: 0 14px 12px;
   display: flex;
   flex-direction: column;
 }
 
-/* 占位/空态 */
 .empty {
   flex: 1;
   display: flex;
@@ -223,7 +296,6 @@ body {
   min-height: 0;
 }
 
-/* 设备健康度 + 预警 组合面板 */
 .health-warn {
   flex: 1;
   min-height: 0;

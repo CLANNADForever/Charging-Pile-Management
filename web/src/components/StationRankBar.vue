@@ -8,7 +8,7 @@ import * as echarts from 'echarts'
 import ChartBox from './ChartBox.vue'
 import { valueAxis, categoryAxis } from '../echarts/theme'
 
-// 电站累计充电量排行(横向柱状图)。
+// 电站累计充电量排行(横向柱状图)，按电量降序。
 const props = defineProps({
   data: { type: Array, default: () => [] }
 })
@@ -31,14 +31,14 @@ const option = computed(() => {
         return `${d.name}<br/>累计充电量:${d.energy} kWh<br/>累计营收:${d.revenue ?? '--'} 元`
       }
     },
-    grid: { left: 120, right: 40, top: 10, bottom: 24 },
+    grid: { left: 120, right: 44, top: 10, bottom: 24 },
     xAxis: { ...valueAxis(), type: 'value' },
     yAxis: { ...categoryAxis(), type: 'category', data: names, inverse: true },
     series: [
       {
         type: 'bar',
         data: values,
-        barWidth: 12,
+        barWidth: 14,
         itemStyle: {
           borderRadius: [0, 6, 6, 0],
           color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [

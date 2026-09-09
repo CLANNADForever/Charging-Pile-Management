@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import ChartBox from './ChartBox.vue'
 
 // 充电时段热力分布:7 天 × 24 小时热力图。
+// 无订单聚合数据时展示"暂无数据"占位(后端尚未提供逐时聚合接口)。
 const props = defineProps({
   data: { type: Array, default: () => [] }
 })
@@ -14,6 +15,17 @@ const props = defineProps({
 const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 const option = computed(() => {
+  if (!props.data || !props.data.length) {
+    return {
+      graphic: [
+        {
+          type: 'text', left: 'center', top: 'middle',
+          style: { text: '暂无充电时段数据', fontSize: 14, fill: '#8A94A8', textAlign: 'center' }
+        }
+      ]
+    }
+  }
+
   const dayIndex = {}
   DAYS.forEach((d, i) => { dayIndex[d] = i })
 

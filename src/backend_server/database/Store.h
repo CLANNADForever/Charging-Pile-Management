@@ -57,6 +57,24 @@ struct DailyRevenue {
     double energyKwh = 0.0;
 };
 
+// 逐站经营聚合(已支付订单，按站)
+struct StationStats {
+    int stationId = 0;
+    ncs::MoneyCents todayRevenueCents = 0;  // 今日应收(分)
+    double todayEnergyKwh = 0.0;            // 今日电量
+    qint64 todayOrders = 0;                 // 今日订单数
+    ncs::MoneyCents totalRevenueCents = 0;  // 累计应收(分)
+    double totalEnergyKwh = 0.0;            // 累计电量
+    qint64 totalOrders = 0;                 // 累计订单数
+};
+// 充电时段热力单元(星期几 × 小时)
+struct HourlyCell {
+    int dow = 0;        // 1=周一 .. 7=周日
+    int hour = 0;       // 0..23
+    qint64 orders = 0;
+    double energyKwh = 0.0;
+};
+
 // R1 建/改站扩展属性(缺省全默认，不破坏旧调用)
 struct StationFields {
     int amenities = 0;
@@ -158,6 +176,9 @@ public:
     QVector<DailyRevenue> dailyRevenue(int days) const;    // 含今天, 缺日补 0
     QVector<int> deviceStateCounts() const;                // 下标=DeviceState 值
     QVector<std::pair<int,int>> listDeviceStations() const; // (device_id, station_id)
+    QVector<StationStats> stationStats() const;  // 逐站营收/电量/单数(今日+累计)
+    QVector<HourlyCell> hourlyHeatmap() const;   // 订单时段热力(星期×小时)
+
 private:
     bool findLocked(const QString& phone, ncs::User* out) const;  // 调用方持锁
     bool insertUserLocked(const QString& phone);                  // 调用方持锁

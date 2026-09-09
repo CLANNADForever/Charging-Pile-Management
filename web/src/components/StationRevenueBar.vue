@@ -8,7 +8,7 @@ import * as echarts from 'echarts'
 import ChartBox from './ChartBox.vue'
 import { valueAxis, categoryAxis } from '../echarts/theme'
 
-// 各站今日营收排行(竖向柱状图)。
+// 各站今日营收排行(竖向柱状图)，按营收降序。
 const props = defineProps({
   data: { type: Array, default: () => [] }
 })
@@ -42,7 +42,7 @@ const option = computed(() => {
       {
         type: 'bar',
         data: values,
-        barWidth: 18,
+        barWidth: 22,
         itemStyle: {
           borderRadius: [6, 6, 0, 0],
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [

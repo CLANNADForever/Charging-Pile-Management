@@ -2,6 +2,10 @@
 
 #include <sqlite3.h>
 
+#include <random>
+#include <tuple>
+#include <vector>
+
 #include <QDate>
 #include <QDateTime>
 #include <QCryptographicHash>
@@ -216,25 +220,170 @@ bool Store::seedIfEmptyLocked() {
     if (hasRows)
         return true;
 
-    const char* stations =
-        "INSERT INTO stations(name,address,latitude,longitude,total_piles,price_cents,free_piles,"
-        " price_slow_cents,price_ultra_cents,amenities,parking,location,is_promo,open_hours,min_charge_cents) VALUES"
-        " ('望京充电站','北京市朝阳区望京街道',39.996,116.481,3,200,2,140,280,339,1,0,1,'00:00-24:00',0),"
-        " ('中关村充电站','北京市海淀区中关村大街',39.984,116.316,4,180,3,160,300,107,0,1,0,'06:00-24:00',0),"
-        " ('亦庄超充站','北京市大兴区荣华中路',39.795,116.506,2,240,2,180,320,405,2,0,1,'00:00-24:00',0)";
-    char* err = nullptr;
-    if (sqlite3_exec(db_, stations, nullptr, nullptr, &err) != SQLITE_OK) {
+    // 固定种子：每次初始化生成一致的演示数据(10 站 / 约 50 桩 / 20 用户 / 近 30 天订单)
+    std::mt19937 gen(20260909u);
+    auto ri = [&gen](int lo, int hi) {
+        return lo + static_cast<int>(gen() % static_cast<unsigned>(hi - lo + 1));
+    };
+    auto exec = [this](const char* sql) -> bool {
+        char* err = nullptr;
+        if (sqlite3_exec(db_, sql, nullptr, nullptr, &err) == SQLITE_OK)
+            return true;
         sqlite3_free(err);
         return false;
+    };
+
+    // 1) 站点(北京 10 站)
+    struct St { const char* name; const char* addr; double lat; double lng;
+                int fast; int slow; int ultra; int amen; int park; int promo; const char* oh; };
+    static const St kSt[] = {
+        {"望京充电站", "北京市朝阳区望京街道", 39.996, 116.481, 200, 140, 280, 339, 1, 1, "00:00-24:00"},
+        {"中关村充电站", "北京市海淀区中关村大街", 39.984, 116.316, 180, 160, 300, 107, 0, 0, "06:00-24:00"},
+        {"亦庄超充站", "北京市大兴区荣华中路", 39.795, 116.506, 240, 180, 320, 405, 2, 1, "00:00-24:00"},
+        {"北京南站充电站", "丰台区南站幸福路", 39.865, 116.378, 190, 130, 300, 339, 1, 0, "00:00-24:00"},
+        {"国贸CBD充电站", "朝阳区建国门外大街", 39.908, 116.461, 230, 160, 360, 107, 0, 1, "00:00-24:00"},
+        {"通州万达充电站", "通州区新华西街", 39.909, 116.657, 180, 120, 300, 405, 2, 0, "00:00-24:00"},
+        {"昌平回龙观充电站", "昌平区回龙观东大街", 40.071, 116.348, 170, 110, 280, 107, 0, 0, "06:00-24:00"},
+        {"西直门枢纽充电站", "西城区西直门北大街", 39.940, 116.354, 210, 150, 330, 339, 1, 0, "00:00-24:00"},
+        {"石景山万达充电站", "石景山区石景山路", 39.906, 116.201, 190, 120, 310, 405, 2, 1, "00:00-24:00"},
+        {"首都机场T3充电站", "顺义区首都机场3号航站楼", 40.077, 116.598, 220, 140, 350, 339, 2, 0, "00:00-24:00"},
+    };
+    {
+        const char* sql = "INSERT INTO stations(name,address,latitude,longitude,total_piles,"
+                          "price_cents,free_piles,price_slow_cents,price_ultra_cents,amenities,"
+                          "parking,location,is_promo,open_hours,min_charge_cents) "
+                          "VALUES(?,?,?,?,0,?,0,?,?,?,?,0,?,?,0)";
+        if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+            return false;
+        for (const St& s : kSt) {
+            sqlite3_reset(st);
+            sqlite3_bind_text(st, 1, s.name, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(st, 2, s.addr, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_double(st, 3, s.lat);
+            sqlite3_bind_double(st, 4, s.lng);
+            sqlite3_bind_int(st, 5, s.fast);
+            sqlite3_bind_int(st, 6, s.slow);
+            sqlite3_bind_int(st, 7, s.ultra);
+            sqlite3_bind_int(st, 8, s.amen);
+            sqlite3_bind_int(st, 9, s.park);
+            sqlite3_bind_int(st, 10, s.promo);
+            sqlite3_bind_text(st, 11, s.oh, -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(st) != SQLITE_DONE) { sqlite3_finalize(st); return false; }
+        }
+        sqlite3_finalize(st);
     }
-    const char* devices =
-        "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES"
-        " (1,0,0,120.0,0.0),(1,1,0,7.0,0.0),(1,0,1,180.0,12.5),"
-        " (2,0,0,120.0,0.0),(2,1,0,7.0,0.0),(2,0,2,180.0,3.2),(2,0,0,120.0,0.0),"
-        " (3,1,0,7.0,0.0),(3,0,0,180.0,0.0)";
-    if (sqlite3_exec(db_, devices, nullptr, nullptr, &err) != SQLITE_OK) {
-        sqlite3_free(err);
-        return false;
+
+    // 2) 设备(每站 4-9 台；功率 180/120/7；约 72% 空闲)
+    std::vector<std::tuple<int,int,int>> devs;  // (device_id, station_id, power)
+    {
+        const char* sql = "INSERT INTO devices(station_id,type,state,power_kw,energy_kwh) VALUES(?,?,?,?,0)";
+        if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+            return false;
+        for (int sid = 1; sid <= 10; ++sid) {
+            const int n = ri(4, 9);
+            int idle = 0;
+            for (int i = 0; i < n; ++i) {
+                const int r = ri(0, 2);
+                const int pw = (r == 0) ? 180 : (r == 1 ? 120 : 7);
+                const int dtype = (pw < 30) ? 1 : 0;
+                const int sr = ri(0, 99);
+                const int state = (sr < 72) ? 0 : (sr < 92 ? 1 : 2);
+                if (state == 0) ++idle;
+                sqlite3_reset(st);
+                sqlite3_bind_int(st, 1, sid);
+                sqlite3_bind_int(st, 2, dtype);
+                sqlite3_bind_int(st, 3, state);
+                sqlite3_bind_double(st, 4, static_cast<double>(pw));
+                if (sqlite3_step(st) != SQLITE_DONE) { sqlite3_finalize(st); return false; }
+                devs.emplace_back(static_cast<int>(sqlite3_last_insert_rowid(db_)), sid, pw);
+            }
+            const QString up = QStringLiteral("UPDATE stations SET total_piles=%1, free_piles=%2 WHERE id=%3")
+                                   .arg(n).arg(idle).arg(sid);
+            if (!exec(up.toUtf8().constData())) { sqlite3_finalize(st); return false; }
+        }
+        sqlite3_finalize(st);
+    }
+
+    // 3) 用户(20 个，近 30 天注册)
+    std::vector<QString> phones;
+    {
+        const char* sql = "INSERT INTO users(phone,nickname,balance_cents,status,registered_at) VALUES(?,?,?,0,?)";
+        if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+            return false;
+        const char* kPre[] = {"138","139","150","151","152","155","158","159","186","187","188","136","137","156","133","189"};
+        for (int i = 0; i < 20; ++i) {
+            QString phone = QString::fromLatin1(kPre[i % 16]);
+            for (int k = 0; k < 8; ++k)
+                phone += QLatin1Char('0' + ri(0, 9));
+            phones.push_back(phone);
+            const QDateTime reg = QDateTime::currentDateTimeUtc().addDays(-ri(0, 29)).addSecs(-ri(0, 72000));
+            const QByteArray p = phone.toUtf8();
+            const QByteArray nick = (QStringLiteral("充电用户") + phone.right(4)).toUtf8();
+            const QByteArray iso = reg.toString(Qt::ISODate).toUtf8();
+            sqlite3_reset(st);
+            sqlite3_bind_text(st, 1, p.constData(), p.size(), SQLITE_TRANSIENT);
+            sqlite3_bind_text(st, 2, nick.constData(), nick.size(), SQLITE_TRANSIENT);
+            sqlite3_bind_int64(st, 3, ri(0, 20000));
+            sqlite3_bind_text(st, 4, iso.constData(), iso.size(), SQLITE_TRANSIENT);
+            if (sqlite3_step(st) != SQLITE_DONE) { sqlite3_finalize(st); return false; }
+        }
+        sqlite3_finalize(st);
+    }
+
+    // 4) 订单(近 30 天，全已支付)
+    {
+        const int fast[11]  = {0, 200, 180, 240, 190, 230, 180, 170, 210, 190, 220};
+        const int slow[11]  = {0, 140, 160, 180, 130, 160, 120, 110, 150, 120, 140};
+        const int ultra[11] = {0, 280, 300, 320, 300, 360, 300, 280, 330, 310, 350};
+        auto tierPrice = [&](int sid, int pw) {
+            if (pw >= 180) return ultra[sid];
+            if (pw >= 30) return fast[sid];
+            return slow[sid];
+        };
+        const char* sql = "INSERT INTO orders(phone,station_id,device_id,unit_price_cents,"
+                          "amount_cents,energy_kwh,status,started_at,finished_at,"
+                          "charge_started_at,battery_cap_kwh,start_soc_pct) "
+                          "VALUES(?,?,?,?,?,?,3,?,?,?,60,?)";
+        if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+            return false;
+        const QDate today = QDateTime::currentDateTimeUtc().date();
+        for (int day = 30; day >= 0; --day) {
+            const QDate d = today.addDays(-day);
+            int base = (d.dayOfWeek() >= 6) ? ri(6, 12) : ri(3, 9);
+            if (day < 7) base += 2;
+            for (int k = 0; k < base; ++k) {
+                const QString& phone = phones[ri(0, static_cast<int>(phones.size()) - 1)];
+                const auto& dv = devs[ri(0, static_cast<int>(devs.size()) - 1)];
+                const int did = std::get<0>(dv);
+                const int sid = std::get<1>(dv);
+                const int pw = std::get<2>(dv);
+                const int durMin = (pw < 30) ? ri(60, 240) : (pw >= 180 ? ri(15, 40) : ri(20, 50));
+                double energy = static_cast<double>(pw) * durMin / 60.0;
+                if (energy > 55.0) energy = 55.0;
+                const int up = tierPrice(sid, pw);
+                const int amount = static_cast<int>(energy * up + 0.5);
+                const QDateTime finished = d.startOfDay(Qt::UTC).addSecs(ri(0, 23) * 3600 + ri(0, 59) * 60);
+                const QDateTime started = finished.addSecs(-durMin * 60);
+                const QDateTime chargeStart = started.addSecs(120);
+                const QByteArray p = phone.toUtf8();
+                const QByteArray s = started.toString(Qt::ISODate).toUtf8();
+                const QByteArray f = finished.toString(Qt::ISODate).toUtf8();
+                const QByteArray cs = chargeStart.toString(Qt::ISODate).toUtf8();
+                sqlite3_reset(st);
+                sqlite3_bind_text(st, 1, p.constData(), p.size(), SQLITE_TRANSIENT);
+                sqlite3_bind_int(st, 2, sid);
+                sqlite3_bind_int(st, 3, did);
+                sqlite3_bind_int64(st, 4, up);
+                sqlite3_bind_int64(st, 5, amount);
+                sqlite3_bind_double(st, 6, energy);
+                sqlite3_bind_text(st, 7, s.constData(), s.size(), SQLITE_TRANSIENT);
+                sqlite3_bind_text(st, 8, f.constData(), f.size(), SQLITE_TRANSIENT);
+                sqlite3_bind_text(st, 9, cs.constData(), cs.size(), SQLITE_TRANSIENT);
+                sqlite3_bind_int(st, 10, ri(10, 55));
+                if (sqlite3_step(st) != SQLITE_DONE) { sqlite3_finalize(st); return false; }
+            }
+        }
+        sqlite3_finalize(st);
     }
     return true;
 }
@@ -1532,5 +1681,71 @@ QVector<std::pair<int,int>> Store::listDeviceStations() const {
     sqlite3_finalize(st);
     return out;
 }
+QVector<StationStats> Store::stationStats() const {
+    QVector<StationStats> out;
+    auto lk = lockGuard();
+    if (!db_)
+        return out;
+    const QDate today = QDateTime::currentDateTimeUtc().date();
+    const QString t0 =
+        QStringLiteral("%1T00:00:00").arg(today.toString(Qt::ISODate));
+    sqlite3_stmt* st = nullptr;
+    const char* sql =
+        "SELECT station_id,"
+        " COALESCE(SUM(CASE WHEN finished_at >= ? THEN amount_cents ELSE 0 END),0),"
+        " COALESCE(SUM(CASE WHEN finished_at >= ? THEN energy_kwh ELSE 0 END),0),"
+        " COALESCE(SUM(CASE WHEN finished_at >= ? THEN 1 ELSE 0 END),0),"
+        " COALESCE(SUM(amount_cents),0),"
+        " COALESCE(SUM(energy_kwh),0),"
+        " COUNT(*)"
+        " FROM orders WHERE status=3 GROUP BY station_id ORDER BY station_id";
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return out;
+    const QByteArray t = t0.toUtf8();
+    sqlite3_bind_text(st, 1, t.constData(), t.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, t.constData(), t.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 3, t.constData(), t.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        StationStats s;
+        s.stationId = sqlite3_column_int(st, 0);
+        s.todayRevenueCents = sqlite3_column_int64(st, 1);
+        s.todayEnergyKwh = sqlite3_column_double(st, 2);
+        s.todayOrders = sqlite3_column_int64(st, 3);
+        s.totalRevenueCents = sqlite3_column_int64(st, 4);
+        s.totalEnergyKwh = sqlite3_column_double(st, 5);
+        s.totalOrders = sqlite3_column_int64(st, 6);
+        out.push_back(s);
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
+QVector<HourlyCell> Store::hourlyHeatmap() const {
+    QVector<HourlyCell> out;
+    auto lk = lockGuard();
+    if (!db_)
+        return out;
+    // finished_at 为 ISO-8601 UTC；用 substr 取日期/小时，星期几由 QDate 解析。
+    sqlite3_stmt* st = nullptr;
+    const char* sql =
+        "SELECT substr(finished_at,1,10), substr(finished_at,12,2), COUNT(*),"
+        " COALESCE(SUM(energy_kwh),0) FROM orders WHERE status=3"
+        " GROUP BY substr(finished_at,1,10), substr(finished_at,12,2)";
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK)
+        return out;
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        const QDate d = QDate::fromString(columnText(st, 0), Qt::ISODate);
+        HourlyCell c;
+        c.dow = d.dayOfWeek();  // 1=周一..7=周日
+        c.hour = columnText(st, 1).toInt();
+        c.orders = sqlite3_column_int64(st, 2);
+        c.energyKwh = sqlite3_column_double(st, 3);
+        out.push_back(c);
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
+
 }  // namespace backend
 }  // namespace ncs

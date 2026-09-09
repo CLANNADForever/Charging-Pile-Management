@@ -51,7 +51,7 @@ const option = computed(() => ({
       data: props.data.map(d => d.revenue),
       smooth: true,
       itemStyle: { color: '#4D9FFF' },
-      lineStyle: { width: 2 },
+      lineStyle: { width: 2.5, shadowBlur: 10, shadowColor: 'rgba(77,159,255,0.5)' },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: 'rgba(77,159,255,0.28)' },

@@ -196,6 +196,16 @@ json dailyToJson(const DailyRevenue& d) {
                 {"energy_kwh", d.energyKwh}};
 }
 
+json stationStatsToJson(const StationStats& s) {
+    return json{{"station_id", s.stationId},
+                {"today_revenue_cents", s.todayRevenueCents},
+                {"today_energy_kwh", s.todayEnergyKwh},
+                {"today_orders", s.todayOrders},
+                {"total_revenue_cents", s.totalRevenueCents},
+                {"total_energy_kwh", s.totalEnergyKwh},
+                {"total_orders", s.totalOrders}};
+}
+
 json auditToJson(const AuditRow& a) {
     return json{{"id", a.id},
                 {"username", a.username.toStdString()},
@@ -1477,6 +1487,35 @@ void BackendApp::registerRoutes() {
              [](const httplib::Request&, httplib::Response& res) {
                  replyMlFile(res, QStringLiteral("congestion_recommend.json"));
              });
+    // 逐站经营聚合(排行/地图 tooltip)
+    srv_.Get("/api/admin/stats/stations",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const auto stats = store_.stationStats();
+                 json arr = json::array();
+                 for (const auto& s : stats)
+                     arr.push_back(stationStatsToJson(s));
+                 replyOk(res, std::move(arr));
+             });
+
+    // 充电时段热力(星期×小时)
+    srv_.Get("/api/admin/stats/hourly",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 QString user, role;
+                 if (!requireAdmin(req, res, &user, &role))
+                     return;
+                 const auto cells = store_.hourlyHeatmap();
+                 json arr = json::array();
+                 for (const auto& c : cells)
+                     arr.push_back(json{{"dow", c.dow},
+                                        {"hour", c.hour},
+                                        {"orders", c.orders},
+                                        {"energy_kwh", c.energyKwh}});
+                 replyOk(res, std::move(arr));
+             });
+
 }
 // ---------- 模拟器 TCP(JSON-lines 心跳)；协议与 HTTP 信封无关 ----------
 
