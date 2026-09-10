@@ -4,7 +4,7 @@
 
 namespace ncs {
 const char* project_name() {
-    return "NCS 充电桩管理平台";
+    return "熠熠ee 充电桩管理平台";
 }
 
 namespace {

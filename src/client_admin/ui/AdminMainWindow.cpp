@@ -25,7 +25,7 @@
 AdminMainWindow::AdminMainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setWindowTitle(QStringLiteral("NCS 运营管理端"));
+    setWindowTitle(QStringLiteral("熠熠ee 运营管理端"));
     resize(1440, 900);
     setMinimumSize(1280, 800);
 
@@ -79,7 +79,7 @@ QWidget *AdminMainWindow::buildSidebar()
     lay->setContentsMargins(0, 24, 0, 16);
     lay->setSpacing(0);
 
-    auto *brand = new QLabel(QStringLiteral("NCS 运营管理端"), bar);
+    auto *brand = new QLabel(QStringLiteral("熠熠ee 运营管理端"), bar);
     brand->setObjectName(QStringLiteral("sideBrand"));
     brand->setAlignment(Qt::AlignCenter);
     auto *sub = new QLabel(QStringLiteral("充电桩管理平台"), bar);

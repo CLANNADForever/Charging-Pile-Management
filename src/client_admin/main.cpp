@@ -7,8 +7,8 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("NCS Admin"));
-    app.setApplicationDisplayName(QStringLiteral("NCS · 运营管理端"));
+    app.setApplicationName(QStringLiteral("熠熠ee Admin"));
+    app.setApplicationDisplayName(QStringLiteral("熠熠ee · 运营管理端"));
 
     AdminTheme::apply(app);
 

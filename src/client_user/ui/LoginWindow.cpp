@@ -16,7 +16,7 @@ LoginWindow::LoginWindow(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("loginRoot"));
-    setWindowTitle(QStringLiteral("NCS · 充电"));
+    setWindowTitle(QStringLiteral("熠熠ee · 充电"));
     setFixedSize(420, 760);
 
     auto *root = new QVBoxLayout(this);
@@ -46,12 +46,12 @@ LoginWindow::LoginWindow(QWidget *parent)
 
     root->addSpacing(20);
 
-    auto *appTitle = new QLabel(QStringLiteral("东软电动汽车充电桩"), this);
+    auto *appTitle = new QLabel(QStringLiteral("熠熠ee"), this);
     appTitle->setObjectName(QStringLiteral("appTitle"));
     appTitle->setAlignment(Qt::AlignHCenter);
     root->addWidget(appTitle);
 
-    auto *appSub = new QLabel(QStringLiteral("充电桩应用管理平台"), this);
+    auto *appSub = new QLabel(QStringLiteral("电动汽车充电桩管理平台"), this);
     appSub->setObjectName(QStringLiteral("appSubtitle"));
     appSub->setAlignment(Qt::AlignHCenter);
     root->addWidget(appSub);
