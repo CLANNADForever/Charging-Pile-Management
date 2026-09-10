@@ -11,4 +11,5 @@ node_modules/
 **/dist/
 /web/node_modules/
 /web/dist/
-/data/
+/data/*
+!/data/ncs.db
