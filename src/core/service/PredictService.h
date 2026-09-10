@@ -28,8 +28,10 @@ class PredictService
 public:
     static PredictService &instance();
 
-    // 负荷曲线(折线图):stationId 传 -1 表示全部。
-    QList<LoadPoint> loadSeries(int horizon, int stationId) const;
+    // 负荷曲线(折线图):stationId 传 -1 表示全部;
+    // past24=true 时展示过去 24h 双线(actual+predicted),横轴按本机时间回推。
+    QList<LoadPoint> loadSeries(int horizon, int stationId,
+                                bool past24 = false) const;
 
     // 各站预测结果(表格)。
     QList<LoadPrediction> predictionList(int horizon) const;

@@ -1,5 +1,8 @@
 <template>
-  <ChartBox :option="option" />
+  <div class="gauge-wrap">
+    <ChartBox :option="option" />
+    <div class="gauge-value">{{ Math.round(health) }}%</div>
+  </div>
 </template>
 
 <script setup>
@@ -20,24 +23,38 @@ const option = computed(() => ({
       startAngle: 200,
       endAngle: -20,
       radius: '95%',
-      center: ['50%', '58%'],
-      progress: { show: true, width: 12, itemStyle: { color: '#2DD4A7' } },
-      axisLine: { lineStyle: { width: 12, color: [[1, '#1B2740']] } },
+      center: ['50%', '50%'],
+      progress: { show: true, width: 16, itemStyle: { color: '#2DD4A7' } },
+      axisLine: { lineStyle: { width: 16, color: [[1, '#1B2740']] } },
       axisTick: { show: false },
       splitLine: { show: false },
       axisLabel: { show: false },
       pointer: { show: false },
       anchor: { show: false },
       detail: {
-        valueAnimation: true,
-        formatter: '{value}%',
-        fontSize: 26,
-        fontWeight: 'bold',
-        color: '#E6ECF5',
-        offsetCenter: [0, 0]
+        show: false
       },
       data: [{ value: props.health }]
     }
   ]
 }))
 </script>
+
+<style scoped>
+.gauge-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.gauge-value {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 28px;
+  font-weight: bold;
+  color: #E6ECF5;
+  pointer-events: none;
+  z-index: 2;
+}
+</style>

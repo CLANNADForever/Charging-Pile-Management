@@ -7,6 +7,7 @@
 #include "StationService.h"
 
 #include <QProcess>
+#include <QDateTime>
 #include <QTime>
 #include <cmath>
 
@@ -51,18 +52,70 @@ bool parseForecastReply(const ncsfe::BackendClient::Reply &r,
     return true;
 }
 
+QList<LoadPoint> relabelToLocalTime(const QList<LoadPoint> &src, int horizon,
+                                    bool past24)
+{
+    Q_UNUSED(horizon);
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDateTime base(now.date(), QTime(now.time().hour(), 0, 0));
+    QList<LoadPoint> out;
+    const int n = src.size();
+    for (int i = 0; i < n; ++i) {
+        LoadPoint p = src[i];
+        const QDateTime t = past24
+                                ? base.addSecs((i - (n - 1)) * 3600)
+                                : base.addSecs((i + 1) * 3600);
+        p.label = t.toString(QStringLiteral("HH:mm"));
+        out.append(p);
+    }
+    return out;
+}
+
 } // namespace
 
-QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId) const
+QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId,
+                                            bool past24) const
 {
     Q_UNUSED(stationId); // 桩:暂不按电站区分曲线
+
+    if (past24) {
+        // 过去 24 小时用数据库真实订单电量，第二线=昨日同期(区别于未来预测)。
+        const auto pr = ncsfe::BackendClient::get(
+            QStringLiteral("/api/ml/past-24h"));
+        QList<LoadPoint> past;
+        if (parseForecastReply(pr, &past, nullptr, nullptr, nullptr))
+            return relabelToLocalTime(past, 24, true);
+    }
 
     // 优先真实离线模型产物(按 1/6/24h 回测窗口)。
     const auto r = ncsfe::BackendClient::get(
         QStringLiteral("/api/ml/load-forecast?horizon=%1").arg(horizon));
     QList<LoadPoint> real;
-    if (parseForecastReply(r, &real, nullptr, nullptr, nullptr))
-        return real;
+    if (parseForecastReply(r, &real, nullptr, nullptr, nullptr)) {
+        if (horizon == 24 && real.size() > 24)
+            real = real.mid(0, 24);
+        if (horizon == 6 && real.size() > 6)
+            real = real.mid(0, 6);
+        if (horizon == 1 && !real.isEmpty()) {
+            // 未来 1 小时展示 6 个 10 分钟整点采样点。
+            QTime base = QTime::fromString(real.first().label,
+                                           QStringLiteral("HH:mm"));
+            if (!base.isValid())
+                base = QTime(0, 0);
+            QList<LoadPoint> sub;
+            const double value = real.first().predicted;
+            for (int i = 1; i <= 6; ++i) {
+                LoadPoint p;
+                p.label = base.addSecs(i * 10 * 60)
+                              .toString(QStringLiteral("HH:mm"));
+                p.actual = real.first().actual;
+                p.predicted = value;
+                sub.append(p);
+            }
+            real = sub;
+        }
+        return relabelToLocalTime(real, horizon, past24);
+    }
 
     int points = 24;
     int stepMin = 60;
@@ -91,53 +144,72 @@ QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId) const
 
 QList<LoadPrediction> PredictService::predictionList(int horizon) const
 {
-    // 从真实产物生成汇总行: 该时域第一窗口电量 + 平均空闲桩 + 是否含高峰。
+    QList<LoadPrediction> result;
+    const auto stations = StationService::instance().listStations();
+    if (stations.isEmpty())
+        return result;
+
+    // 加载离线预测作为“每桩基线”，再按数据库实际电站/电桩规模展开成 10 站汇总。
     const auto loadR = ncsfe::BackendClient::get(
         QStringLiteral("/api/ml/load-forecast?horizon=%1").arg(horizon));
     QList<LoadPoint> pts;
     QString stationName;
     double energy = 0.0;
     bool anyPeak = false;
-    if (parseForecastReply(loadR, &pts, &stationName, &energy, &anyPeak)) {
+    const bool hasMl = parseForecastReply(loadR, &pts, &stationName, &energy,
+                                          &anyPeak);
+
+    double modelFreeRatio = 0.5;
+    if (hasMl) {
         const auto occR = ncsfe::BackendClient::get(
             QStringLiteral("/api/ml/occupancy?horizon=%1").arg(horizon));
-        double idleAvg = 0.0;
+        double freeSum = 0.0;
         int n = 0;
         if (occR.ok && occR.data.isObject()) {
             const QJsonArray occPts = occR.data.toObject()
                                           .value(QStringLiteral("points"))
                                           .toArray();
             for (const auto &v : occPts) {
-                idleAvg += v.toObject()
+                freeSum += v.toObject()
                                .value(QStringLiteral("free_pred"))
                                .toDouble();
                 ++n;
             }
             if (n > 0)
-                idleAvg /= n;
+                modelFreeRatio = freeSum / n / 6.0;  // 样本站共 6 桩
         }
-
-        LoadPrediction p;
-        p.stationName = stationName.isEmpty()
-                            ? QStringLiteral("演示站(UrbanEV 离线模型)")
-                            : stationName + QStringLiteral("(离线模型)");
-        p.predictedEnergy = pts.isEmpty() ? energy : pts.first().predicted;
-        p.predictedIdle = qMax(0, qRound(idleAvg));
-        p.isPeak = anyPeak;
-        return { p };
     }
 
-    QList<LoadPrediction> result;
-    const auto stations = StationService::instance().listStations();
     for (const Station &s : stations) {
-        const int seed = s.id * 7 + horizon * 3;
-
         LoadPrediction p;
         p.stationName = s.name;
-        p.predictedEnergy = 500.0 + 300.0 * std::sin(seed * 0.5) + 100.0 * std::sin(seed * 1.1);
         const int total = StationService::instance().chargersByStation(s.id).size();
-        p.predictedIdle = qMax(0, total - (2 + seed % 4));
-        p.isPeak = (seed % 3) == 0;
+        if (total <= 0)
+            continue;
+
+        if (hasMl && !pts.isEmpty()) {
+            // 样本站 6 桩：按实际电站桩数等比展开
+            const double energyPerPile = pts.first().predicted / 6.0;
+            p.predictedEnergy = energyPerPile * total;
+
+            const auto chargers =
+                StationService::instance().chargersByStation(s.id);
+            int currentFree = 0;
+            for (const Charger &c : chargers)
+                if (c.status == 0)
+                    ++currentFree;
+            double ratio = qBound(
+                0.0, 0.6 * modelFreeRatio + 0.4 * currentFree / double(total), 1.0);
+            p.predictedIdle = qRound(ratio * total);
+            p.isPeak = anyPeak && p.predictedIdle < qMax(1, total / 2);
+        } else {
+            // 兜底：接口不可用时仍给每站合理估算
+            const int seed = s.id * 7 + horizon * 3;
+            p.predictedEnergy =
+                500.0 + 300.0 * std::sin(seed * 0.5) + 100.0 * std::sin(seed * 1.1);
+            p.predictedIdle = qMax(0, total - (2 + seed % 4));
+            p.isPeak = (seed % 3) == 0;
+        }
         result.append(p);
     }
     return result;

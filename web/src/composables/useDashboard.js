@@ -104,7 +104,7 @@ async function loadBackend() {
     totalRevenue: yuan(overview.total && overview.total.revenue_cents),
     onlineChargers: overview.devices_online || 0,
     totalChargers: overview.devices_total || 0,
-    registeredUsers: (users || []).length,
+    registeredUsers: overview.registered_users || (users || []).length,
     todayRevenue: yuan(overview.today && overview.today.revenue_cents),
     monthRevenue: yuan(overview.month && overview.month.revenue_cents)
   }
@@ -206,18 +206,22 @@ async function loadBackend() {
     peakWarnings = []
   }
 
+  // 真实数据为空时回退到原静态数据，避免组件空白/为 0。
+  const hasAny = (arr, key) => Array.isArray(arr) && arr.some(x => Number(x && x[key]) > 0)
   return {
     meta: { dataThrough: '实时' },
     kpi,
     chargerStatus,
     health,
-    stations: stationsMapped,
-    stationRank,
-    todayRevenueByStation,
-    revenueTrend,
-    userGrowth,
-    hourHeatmap,
-    powerType,
+    stations: stationsMapped.length ? stationsMapped : fallbackData.stations,
+    stationRank: hasAny(stationRank, 'energy') ? stationRank : fallbackData.stationRank,
+    todayRevenueByStation: hasAny(todayRevenueByStation, 'revenue')
+      ? todayRevenueByStation : fallbackData.todayRevenueByStation,
+    revenueTrend: hasAny(revenueTrend, 'revenue') ? revenueTrend : fallbackData.revenueTrend,
+    userGrowth: hasAny(userGrowth, 'count') ? userGrowth : fallbackData.userGrowth,
+    hourHeatmap: hasAny(hourHeatmap, 'value') ? hourHeatmap : fallbackData.hourHeatmap,
+    powerType: (powerType.fast + powerType.slow + powerType.ultra) > 0
+      ? powerType : fallbackData.powerType,
     loadForecast: loadForecast.length ? loadForecast : fallbackData.loadForecast,
     peakWarnings: peakWarnings.length ? peakWarnings : fallbackData.peakWarnings
   }

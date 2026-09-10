@@ -168,3 +168,29 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateScale)
 })
 </script>
+
+<style>
+/* 设备健康度与预警：把健康度半圆环放大，预警列表占剩余宽度 */
+.health-warn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 150px;
+}
+.health-warn .gauge-wrap {
+  flex: 0 0 62%;
+  width: 62%;
+  height: 180px;
+  min-height: 180px;
+  min-width: 0;
+}
+.health-warn .chart-box {
+  width: 100%;
+  height: 100%;
+}
+.health-warn .warnings {
+  flex: 1;
+  min-width: 0;
+}
+</style>

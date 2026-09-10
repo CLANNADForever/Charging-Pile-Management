@@ -1421,6 +1421,7 @@ void BackendApp::registerRoutes() {
                  replyOk(res, json{{"today", aggJson(todayAgg)},
                                    {"month", aggJson(monthAgg)},
                                    {"total", aggJson(totalAgg)},
+                                   {"registered_users", store_.countUsers()},
                                    {"device_health", health},
                                    {"devices_total", devTotal},
                                    {"devices_online",

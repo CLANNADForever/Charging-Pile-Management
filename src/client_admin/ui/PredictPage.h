@@ -28,4 +28,5 @@ private:
     QPushButton *m_btn24 = nullptr;
 
     int m_horizon = 1; // 1 / 6 / 24 小时
+    bool m_past24 = true; // 默认展示“过去 24 小时”双线
 };

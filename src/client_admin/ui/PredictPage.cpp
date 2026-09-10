@@ -15,6 +15,8 @@
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
+#include <QtCharts/QSplineSeries>
+#include <QtCharts/QScatterSeries>
 #include <QtCharts/QValueAxis>
 
 #include "common/Toast.h"
@@ -24,30 +26,52 @@
 
 namespace {
 
-QChart *buildLoadChart(const QList<LoadPoint> &points)
+QChart *buildLoadChart(const QList<LoadPoint> &points, bool past24)
 {
     auto *chart = new QChart;
 
-    auto *actual = new QLineSeries;
-    actual->setName(QStringLiteral("历史实际负荷"));
-    auto *predicted = new QLineSeries;
-    predicted->setName(QStringLiteral("模型预测负荷"));
-
-    for (int i = 0; i < points.size(); ++i) {
-        actual->append(i, points[i].actual);
+    auto *predicted = new QSplineSeries;
+    predicted->setName(past24 ? QStringLiteral("昨日同期参考")
+                              : QStringLiteral("模型预测负荷"));
+    predicted->setColor(QColor(0xFF, 0x7A, 0x3B));
+    for (int i = 0; i < points.size(); ++i)
         predicted->append(i, points[i].predicted);
-    }
 
-    QPen penA(AdminTheme::Blue);
-    penA.setWidth(2);
-    QPen penP(AdminTheme::Violet);
-    penP.setWidth(2);
-    penP.setStyle(Qt::DashLine);
-    actual->setPen(penA);
+    QPen penP(QColor(0xFF, 0x7A, 0x3B));
+    penP.setWidth(3);
+    penP.setStyle(Qt::SolidLine);
     predicted->setPen(penP);
 
-    chart->addSeries(actual);
     chart->addSeries(predicted);
+
+    QSplineSeries *actual = nullptr;
+    if (past24) {
+        actual = new QSplineSeries;
+        actual->setName(QStringLiteral("历史实际负荷"));
+        actual->setColor(QColor(0x35, 0xB8, 0xFF));
+        for (int i = 0; i < points.size(); ++i)
+            actual->append(i, points[i].actual);
+        QPen penA(QColor(0x35, 0xB8, 0xFF));
+        penA.setWidth(2);
+        actual->setPen(penA);
+        chart->addSeries(actual);
+    }
+
+    // 预警阈值：取预测峰值 75%，超过部分用红点标出（不画横线）。
+    double maxPred = 0.0;
+    for (const LoadPoint &p : points)
+        maxPred = qMax(maxPred, p.predicted);
+    const double threshold = maxPred * 0.75;
+
+    auto *over = new QScatterSeries;
+    over->setName(QStringLiteral("超过预警"));
+    over->setColor(QColor(0xEF, 0x44, 0x44));
+    over->setMarkerSize(9.0);
+    for (int i = 0; i < points.size(); ++i)
+        if (points[i].predicted > threshold)
+            over->append(i, points[i].predicted);
+    if (over->count() > 0)
+        chart->addSeries(over);
 
     auto *axisX = new QCategoryAxis;
     axisX->setLabelsPosition(QCategoryAxis::AxisLabelsPositionOnValue);
@@ -57,18 +81,28 @@ QChart *buildLoadChart(const QList<LoadPoint> &points)
     axisX->setLabelsAngle(-45);
 
     double maxV = 0.0;
-    for (const LoadPoint &p : points)
-        maxV = qMax(maxV, qMax(p.actual, p.predicted));
+    for (const LoadPoint &p : points) {
+        maxV = qMax(maxV, p.predicted);
+        if (past24)
+            maxV = qMax(maxV, p.actual);
+    }
+    maxV = qMax(maxV, threshold * 1.05);
     auto *axisY = new QValueAxis;
     axisY->setRange(0.0, maxV * 1.15);
     axisY->setLabelFormat(QStringLiteral("%.0f"));
 
     chart->addAxis(axisX, Qt::AlignBottom);
     chart->addAxis(axisY, Qt::AlignLeft);
-    actual->attachAxis(axisX);
-    actual->attachAxis(axisY);
     predicted->attachAxis(axisX);
     predicted->attachAxis(axisY);
+    if (over->count() > 0) {
+        over->attachAxis(axisX);
+        over->attachAxis(axisY);
+    }
+    if (actual) {
+        actual->attachAxis(axisX);
+        actual->attachAxis(axisY);
+    }
 
     AdminTheme::styleChart(chart);
     return chart;
@@ -91,16 +125,17 @@ PredictPage::PredictPage(QWidget *parent)
     auto *tool = new QHBoxLayout;
     tool->setSpacing(10);
 
-    m_btn1 = new QPushButton(QStringLiteral("未来 1 小时"), this);
-    m_btn6 = new QPushButton(QStringLiteral("6 小时"), this);
-    m_btn24 = new QPushButton(QStringLiteral("24 小时"), this);
+    m_btn1 = new QPushButton(QStringLiteral("过去 24 小时"), this);
+    m_btn6 = new QPushButton(QStringLiteral("未来 6 小时"), this);
+    m_btn24 = new QPushButton(QStringLiteral("未来 24 小时"), this);
     for (auto *b : { m_btn1, m_btn6, m_btn24 }) {
         b->setObjectName(QStringLiteral("secondaryButton"));
         b->setCheckable(true);
         b->setCursor(Qt::PointingHandCursor);
     }
     m_btn1->setChecked(true);
-    m_horizon = 1;
+    m_past24 = true;
+    m_horizon = 24;  // 过去 24h 内部仍取 24h 窗口数据, 横轴回推
 
     m_stationCombo = new QComboBox(this);
     m_stationCombo->addItem(QStringLiteral("全部电站"), -1);
@@ -122,16 +157,25 @@ PredictPage::PredictPage(QWidget *parent)
     tool->addWidget(m_runBtn);
     lay->addLayout(tool);
 
-    auto setHorizon = [this](int h) {
+    auto setPast24 = [this]() {
+        m_past24 = true;
+        m_horizon = 24;
+        m_btn1->setChecked(true);
+        m_btn6->setChecked(false);
+        m_btn24->setChecked(false);
+        rebuild();
+    };
+    auto setFuture = [this](int h) {
+        m_past24 = false;
         m_horizon = h;
-        m_btn1->setChecked(h == 1);
+        m_btn1->setChecked(false);
         m_btn6->setChecked(h == 6);
         m_btn24->setChecked(h == 24);
         rebuild();
     };
-    connect(m_btn1, &QPushButton::clicked, this, [setHorizon]() { setHorizon(1); });
-    connect(m_btn6, &QPushButton::clicked, this, [setHorizon]() { setHorizon(6); });
-    connect(m_btn24, &QPushButton::clicked, this, [setHorizon]() { setHorizon(24); });
+    connect(m_btn1, &QPushButton::clicked, this, [setPast24]() { setPast24(); });
+    connect(m_btn6, &QPushButton::clicked, this, [setFuture]() { setFuture(6); });
+    connect(m_btn24, &QPushButton::clicked, this, [setFuture]() { setFuture(24); });
     connect(m_stationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) { rebuild(); });
 
@@ -141,7 +185,7 @@ PredictPage::PredictPage(QWidget *parent)
     auto *cc = new QVBoxLayout(chartCard);
     cc->setContentsMargins(20, 16, 20, 16);
     cc->setSpacing(12);
-    auto *chartTitle = new QLabel(QStringLiteral("负荷预测对比"), chartCard);
+    auto *chartTitle = new QLabel(QStringLiteral("智能预测曲线"), chartCard);
     chartTitle->setObjectName(QStringLiteral("cardTitle"));
     cc->addWidget(chartTitle);
     m_chart = new QChartView(chartCard);
@@ -157,7 +201,7 @@ PredictPage::PredictPage(QWidget *parent)
     auto *tc = new QVBoxLayout(tableCard);
     tc->setContentsMargins(20, 16, 20, 16);
     tc->setSpacing(12);
-    auto *tableTitle = new QLabel(QStringLiteral("预测汇总(离线模型)"), tableCard);
+    auto *tableTitle = new QLabel(QStringLiteral("预测汇总"), tableCard);
     tableTitle->setObjectName(QStringLiteral("cardTitle"));
     tc->addWidget(tableTitle);
     m_table = new QTableWidget(0, 4, tableCard);
@@ -181,11 +225,12 @@ void PredictPage::refresh()
 void PredictPage::rebuild()
 {
     const int stationId = m_stationCombo->currentData().toInt();
-    const auto series = PredictService::instance().loadSeries(m_horizon, stationId);
+    const auto series =
+        PredictService::instance().loadSeries(m_horizon, stationId, m_past24);
     const auto list = PredictService::instance().predictionList(m_horizon);
 
     auto *old = m_chart->chart();
-    m_chart->setChart(buildLoadChart(series));
+    m_chart->setChart(buildLoadChart(series, m_past24));
     delete old;
 
     m_table->setRowCount(list.size());
