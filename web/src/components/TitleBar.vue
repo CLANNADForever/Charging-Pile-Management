@@ -2,10 +2,10 @@
   <header class="titlebar">
     <div class="titlebar-left">
       <div class="logo">
-        <img :src="logoUrl" alt="NCS" />
+        <img :src="logoUrl" alt="熠熠ee" />
       </div>
       <div>
-        <div class="main-title">NCS 充电管理平台</div>
+        <div class="main-title">熠熠ee 充电管理平台</div>
         <div class="sub-title">大数据可视化分析大屏</div>
       </div>
     </div>

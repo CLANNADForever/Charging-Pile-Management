@@ -53,7 +53,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("root"));
-    setWindowTitle(QStringLiteral("NCS · 充电"));
+    setWindowTitle(QStringLiteral("熠熠ee · 充电"));
     setFixedSize(420, 760);
 
     auto *root = new QVBoxLayout(this);

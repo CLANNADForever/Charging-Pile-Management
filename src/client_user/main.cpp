@@ -14,8 +14,8 @@ int main(int argc, char *argv[])
     qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--ignore-gpu-blocklist");
 
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("NCS"));
-    app.setApplicationDisplayName(QStringLiteral("NCS · 充电"));
+    app.setApplicationName(QStringLiteral("熠熠ee"));
+    app.setApplicationDisplayName(QStringLiteral("熠熠ee · 充电"));
 
     // 允许本地页面(qrc/file)访问远程 URL(腾讯地图脚本),否则会被安全策略拦截
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(

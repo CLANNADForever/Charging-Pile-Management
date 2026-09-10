@@ -22,7 +22,7 @@ AdminLoginWindow::AdminLoginWindow(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("loginRoot"));
-    setWindowTitle(QStringLiteral("NCS 运营管理端 · 登录"));
+    setWindowTitle(QStringLiteral("熠熠ee 运营管理端 · 登录"));
     resize(1280, 800);
     setMinimumSize(900, 600);
 
@@ -52,7 +52,7 @@ AdminLoginWindow::AdminLoginWindow(QWidget *parent)
     lay->addWidget(logoLabel, 0, Qt::AlignHCenter);
     lay->addSpacing(6);
 
-    auto *title = new QLabel(QStringLiteral("东软电动汽车充电桩应用管理平台"), card);
+    auto *title = new QLabel(QStringLiteral("熠熠ee · 电动汽车充电桩管理平台"), card);
     title->setObjectName(QStringLiteral("appTitle"));
     title->setWordWrap(true);
     title->setAlignment(Qt::AlignCenter);
