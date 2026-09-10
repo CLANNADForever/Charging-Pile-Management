@@ -71,6 +71,17 @@ QList<LoadPoint> relabelToLocalTime(const QList<LoadPoint> &src, int horizon,
     return out;
 }
 
+// 预警阈值 = 完整时域预测峰值 × 75%，保证 6h 视图与 24h 视图前 6 个红点一致。
+void applyWarning(QList<LoadPoint> &shown, const QList<LoadPoint> &full)
+{
+    double maxPred = 0.0;
+    for (const LoadPoint &p : full)
+        maxPred = qMax(maxPred, p.predicted);
+    const double threshold = maxPred * 0.75;
+    for (LoadPoint &p : shown)
+        p.warning = p.predicted > threshold;
+}
+
 } // namespace
 
 QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId,
@@ -79,19 +90,25 @@ QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId,
     Q_UNUSED(stationId); // 桩:暂不按电站区分曲线
 
     if (past24) {
-        // 过去 24 小时用数据库真实订单电量，第二线=昨日同期(区别于未来预测)。
+        // 过去 24 小时演示：取离线逐时回测作“今日实际”，第二线为“昨日同期参考”，
+        // 数值口径(逐时)与未来24h(滚动窗口)不同，避免两端曲线完全相同。
         const auto pr = ncsfe::BackendClient::get(
-            QStringLiteral("/api/ml/past-24h"));
+            QStringLiteral("/api/ml/load-forecast?horizon=1"));
         QList<LoadPoint> past;
-        if (parseForecastReply(pr, &past, nullptr, nullptr, nullptr))
+        if (parseForecastReply(pr, &past, nullptr, nullptr, nullptr)) {
+            applyWarning(past, past);
             return relabelToLocalTime(past, 24, true);
+        }
     }
 
     // 优先真实离线模型产物(按 1/6/24h 回测窗口)。
+    // 未来 6h 复用未来 24h 的前 6 个点，保证曲线/红点风格一致。
+    const int apiHorizon = (!past24 && horizon == 6) ? 24 : horizon;
     const auto r = ncsfe::BackendClient::get(
-        QStringLiteral("/api/ml/load-forecast?horizon=%1").arg(horizon));
+        QStringLiteral("/api/ml/load-forecast?horizon=%1").arg(apiHorizon));
     QList<LoadPoint> real;
     if (parseForecastReply(r, &real, nullptr, nullptr, nullptr)) {
+        const QList<LoadPoint> full = real;  // 24h 完整序列，用于统一预警判定
         if (horizon == 24 && real.size() > 24)
             real = real.mid(0, 24);
         if (horizon == 6 && real.size() > 6)
@@ -114,6 +131,7 @@ QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId,
             }
             real = sub;
         }
+        applyWarning(real, full);
         return relabelToLocalTime(real, horizon, past24);
     }
 
@@ -139,6 +157,7 @@ QList<LoadPoint> PredictService::loadSeries(int horizon, int stationId,
         p.predicted = p.actual + 18.0 * std::sin(seed * 0.4) - 9.0;
         result.append(p);
     }
+    applyWarning(result, result);
     return result;
 }
 

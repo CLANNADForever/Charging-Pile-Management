@@ -9,6 +9,7 @@ struct LoadPoint
     QString label;
     double actual = 0.0;
     double predicted = 0.0;
+    bool warning = false;   // 超过预警阈值(由完整时域序列统一计算)
 };
 
 // 单站预测结果

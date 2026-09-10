@@ -57,18 +57,12 @@ QChart *buildLoadChart(const QList<LoadPoint> &points, bool past24)
         chart->addSeries(actual);
     }
 
-    // 预警阈值：取预测峰值 75%，超过部分用红点标出（不画横线）。
-    double maxPred = 0.0;
-    for (const LoadPoint &p : points)
-        maxPred = qMax(maxPred, p.predicted);
-    const double threshold = maxPred * 0.75;
-
     auto *over = new QScatterSeries;
     over->setName(QStringLiteral("超过预警"));
     over->setColor(QColor(0xEF, 0x44, 0x44));
     over->setMarkerSize(9.0);
     for (int i = 0; i < points.size(); ++i)
-        if (points[i].predicted > threshold)
+        if (points[i].warning)
             over->append(i, points[i].predicted);
     if (over->count() > 0)
         chart->addSeries(over);
@@ -86,7 +80,6 @@ QChart *buildLoadChart(const QList<LoadPoint> &points, bool past24)
         if (past24)
             maxV = qMax(maxV, p.actual);
     }
-    maxV = qMax(maxV, threshold * 1.05);
     auto *axisY = new QValueAxis;
     axisY->setRange(0.0, maxV * 1.15);
     axisY->setLabelFormat(QStringLiteral("%.0f"));
